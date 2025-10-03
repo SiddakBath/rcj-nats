@@ -42,6 +42,12 @@ MOTOR_CONFIG = {
     "forward_speed": 0.9,  # Forward movement speed (70% of max)
     "turn_sensitivity": 1.2,  # Turn 1.2
     
+    # Turn smoothing parameters for sharper turns at right angles
+    "turn_smoothing": {
+        "edge_threshold": 0.3,  # When ball is 30% from center, apply edge multiplier
+        "edge_multiplier": 2.0  # Additional multiplier for edge cases (ball at right angles)
+    },
+    
     # Motor PID constants
     "current_limit_foc": 2 * 65536,
     "id_pid": {"kp": 1500, "ki": 200},

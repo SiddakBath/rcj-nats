@@ -278,6 +278,59 @@ class SoccerRobot:
        
         return masked_result
    
+    def _calculate_turn_adjustment(self, error_x_norm):
+        """
+        Calculate turn adjustment using a non-linear smoothing function.
+        
+        This function provides:
+        - Sharper turns when the ball is at right angles (high error values)
+        - Smooth control when the ball is close to center (low error values)
+        - Maximum turning force when the ball is at the edge of the frame
+        
+        Args:
+            error_x_norm: Normalized horizontal error (-1.0 to 1.0)
+            
+        Returns:
+            Turn adjustment value for motor control
+        """
+        # Clamp error to valid range
+        error_x_norm = np.clip(error_x_norm, -1.0, 1.0)
+        
+        # Get smoothing parameters from config
+        smoothing_config = MOTOR_CONFIG["turn_smoothing"]
+        edge_threshold = smoothing_config["edge_threshold"]
+        edge_multiplier = smoothing_config["edge_multiplier"]
+        
+        # Use a non-linear function that provides sharper turns for larger errors
+        # For small errors (ball near center): gentle response
+        # For large errors (ball at right angles): sharp response
+        
+        # Apply a sigmoid-like function that amplifies larger errors
+        # Use absolute value for calculation, then restore sign
+        abs_error = abs(error_x_norm)
+        
+        if abs_error < 0.1:
+            # Very gentle response for small errors (ball near center)
+            smoothed_error = error_x_norm * 0.5
+        elif abs_error < 0.3:
+            # Moderate response for medium errors
+            smoothed_error = error_x_norm * 0.8
+        else:
+            # Sharp response for large errors (ball at right angles)
+            # Use a function that amplifies the error
+            smoothed_error = error_x_norm * (1.0 + abs_error * 2.0)
+        
+        # Apply additional sharpening for extreme angles (ball at edges)
+        # This ensures maximum turning force when ball is at right angles
+        if abs_error > edge_threshold:
+            # Apply additional multiplier for edge cases
+            smoothed_error *= edge_multiplier
+        
+        # Scale by max speed and turn sensitivity
+        turn_adjustment = smoothed_error * self.max_speed * self.turn_sensitivity
+        
+        return turn_adjustment
+   
     def calculate_motor_commands(self):
         if len(self.motors) < 4:
             return [0, 0, 0, 0]
@@ -290,10 +343,8 @@ class SoccerRobot:
             # Default values when ball not detected
             error_x_norm = 0
        
-        # Simple proportional control for turning
-        # Positive error_x_norm means ball is to the right, so turn right
-        # Negative error_x_norm means ball is to the left, so turn left
-        turn_adjustment = error_x_norm * self.max_speed * self.turn_sensitivity
+        # Apply non-linear smoothing function for sharper turns at right angles
+        turn_adjustment = self._calculate_turn_adjustment(error_x_norm)
  
         # Base forward movement speed
         forward_speed = self.max_speed * self.forward_speed
