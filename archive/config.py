@@ -40,7 +40,7 @@ MOTOR_CONFIG = {
     # Speed parameters
     "max_speed": 15000000,  # Maximum speed for all movements
     "forward_speed": 0.9,  # Forward movement speed (70% of max)
-    "turn_sensitivity": 1.2,  # Turn sensitivity for motor control
+    "turn_sensitivity": 1.2,  # Turn 1.2
     
     # Turn smoothing parameters for sharper turns at right angles
     "turn_smoothing": {
