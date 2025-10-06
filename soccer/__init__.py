@@ -8,6 +8,8 @@ from .camera import Camera
 from .motor_controller import MotorController
 from .imu_sensor import IMUSensor
 from .control_system import ControlSystem
+from .tof_sensor import TOFSensor, TOFManager
+from .localization import Localizer
 from . import config
 
 __version__ = "1.0.0"
@@ -19,5 +21,8 @@ __all__ = [
     'MotorController',
     'IMUSensor',
     'ControlSystem',
+    'TOFSensor',
+    'TOFManager',
+    'Localizer',
     'config'
 ]

@@ -94,4 +94,60 @@ CONTROL_CONFIG = {
     "force_calibration": False  # Set to True to force motor calibration
 }
 
+# TOF Sensor Configuration
+TOF_CONFIG = {
+    # TOF sensor addresses (I2C addresses) - real addresses from hardware
+    "addresses": [0x53, 0x55, 0x50, 0x56, 0x5b, 0x57, 0x51, 0x54],
+    
+    # TOF sensor angles in degrees (relative to robot front) - matching physical positions
+    "angles": [-90, 45, 0, -135, 180, -45, 90, 135],
+    
+    # TOF sensor offsets (x, y) in mm from robot center
+    # Each sensor is offset 10 units in the direction it's pointing
+    "offsets": {
+        0x53: (0, 10),      # Left (-90°) - pointing left, so offset in +Y direction
+        0x55: (7, -7),      # Front-left (45°) - pointing front-left
+        0x50: (10, 0),      # Front (0°) - pointing front, so offset in +X direction
+        0x56: (-7, -7),     # Back-right (-135°) - pointing back-right
+        0x5b: (-10, 0),     # Back (180°) - pointing back, so offset in -X direction
+        0x57: (7, 7),       # Front-right (-45°) - pointing front-right
+        0x51: (0, -10),     # Right (90°) - pointing right, so offset in -Y direction
+        0x54: (-7, 7)       # Back-left (135°) - pointing back-left
+    },
+    
+    # Distance limits
+    "max_distance": 1000,  # Maximum distance in mm
+    "min_distance": 10,    # Minimum distance in mm
+    "read_register": 0x10  # Register to read distance from
+}
+
+# Localization Configuration
+LOCALIZATION_CONFIG = {
+    # Field dimensions in mm
+    "field_width": 2430,   # 2.43 meters
+    "field_height": 1820,  # 1.82 meters
+    
+    # Field walls configuration
+    "walls": [
+        # field walls
+        {'type': 'vertical',   'x': -2430/2, 'y_min': -1820/2, 'y_max':  1820/2}, # left                   wall
+        {'type': 'vertical',   'x':  2430/2, 'y_min': -1820/2, 'y_max':  1820/2}, # right                  wall
+        {'type': 'horizontal', 'y':  1820/2, 'x_min': -2430/2, 'x_max':  2430/2}, # top                    wall
+        {'type': 'horizontal', 'y': -1820/2, 'x_min': -2430/2, 'x_max':  2430/2}, # bottom                 wall
+        # goal walls
+        {'type': 'vertical',   'x':  989,    'y_min': -450/2,  'y_max':  450/2},  # right goal back
+        {'type': 'vertical',   'x': -989,    'y_min': -450/2,  'y_max':  450/2},  # left  goal back
+        {'type': 'horizontal', 'y':  450/2,  'x_min':  915,    'x_max':  2430/2}, # right goal top    side wall
+        {'type': 'horizontal', 'y': -450/2,  'x_min':  915,    'x_max':  2430/2}, # right goal bottom side wall
+        {'type': 'horizontal', 'y':  450/2,  'x_min': -915,    'x_max': -2430/2}, # left  goal top    side wall
+        {'type': 'horizontal', 'y': -450/2,  'x_min': -915,    'x_max': -2430/2}, # left  goal bottom side wall
+    ],
+    
+    # Localization algorithm parameters
+    "initial_move_amount": 32,    # Initial search step size in mm
+    "decay_rate": 0.5,           # How much to reduce step size each iteration
+    "cutoff": 0.05,              # Minimum step size before stopping
+    "update_frequency": 0.1       # Localization update frequency in seconds
+}
+
 

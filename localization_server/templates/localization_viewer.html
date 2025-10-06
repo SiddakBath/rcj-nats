@@ -1,0 +1,748 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Robotics Localization Viewer</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            margin-bottom: 30px;
+            color: white;
+        }
+
+        .header h1 {
+            font-size: 2.5rem;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }
+
+        .header p {
+            font-size: 1.2rem;
+            opacity: 0.9;
+        }
+
+        .main-container {
+            display: flex;
+            gap: 20px;
+            max-width: 1400px;
+            width: 100%;
+        }
+
+        .field-container {
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            flex: 2;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .field-canvas {
+            width: 100%;
+            height: 600px;
+            border: 2px solid #ddd;
+            border-radius: 15px;
+            background: #f8f9fa;
+            position: relative;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        #fieldCanvas {
+            border-radius: 15px;
+            background: #f8f9fa;
+            max-width: 100%;
+            max-height: 100%;
+        }
+
+        .controls-panel {
+            background: white;
+            border-radius: 20px;
+            padding: 20px;
+            box-shadow: 0 20px 40px rgba(0,0,0,0.1);
+            flex: 1;
+            min-width: 300px;
+        }
+
+        .btn {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 600;
+            margin: 5px;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        .btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+
+        .btn.danger {
+            background: linear-gradient(135deg, #ff6b6b 0%, #ee5a24 100%);
+        }
+
+        .btn.success {
+            background: linear-gradient(135deg, #2ecc71 0%, #27ae60 100%);
+        }
+
+        .status-panel {
+            margin-top: 20px;
+        }
+
+        .status-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #eee;
+        }
+
+        .status-label {
+            font-weight: 600;
+            color: #495057;
+        }
+
+        .status-value {
+            font-weight: 500;
+            color: #6c757d;
+        }
+
+        .status-value.online {
+            color: #28a745;
+        }
+
+        .status-value.offline {
+            color: #dc3545;
+        }
+
+        .error-message {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            border: 1px solid #f5c6cb;
+            display: none;
+        }
+
+        .success-message {
+            background: #d4edda;
+            color: #155724;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            border: 1px solid #c3e6cb;
+            display: none;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0,0,0,0.8);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            border-radius: 15px;
+        }
+
+        .spinner {
+            width: 40px;
+            height: 40px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-bottom: 15px;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .footer {
+            margin-top: 30px;
+            text-align: center;
+            color: white;
+            opacity: 0.8;
+        }
+
+        .robot-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+        }
+
+        .robot-info h4 {
+            color: #495057;
+            margin-bottom: 10px;
+        }
+
+        .coordinate {
+            display: flex;
+            justify-content: space-between;
+            margin: 5px 0;
+        }
+
+        .coordinate-label {
+            font-weight: 600;
+            color: #6c757d;
+        }
+
+        .coordinate-value {
+            font-family: 'Courier New', monospace;
+            color: #495057;
+        }
+
+        .sensor-info {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 10px;
+            margin: 10px 0;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .sensor-info h4 {
+            color: #495057;
+            margin-bottom: 10px;
+        }
+
+        .sensor-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 8px 0;
+            border-bottom: 1px solid #e9ecef;
+        }
+
+        .sensor-item:last-child {
+            border-bottom: none;
+        }
+
+        .sensor-label {
+            font-weight: 600;
+            color: #6c757d;
+            font-size: 0.9em;
+        }
+
+        .sensor-value {
+            font-family: 'Courier New', monospace;
+            color: #495057;
+            font-size: 0.9em;
+        }
+
+        .sensor-distance {
+            color: #28a745;
+            font-weight: 600;
+        }
+
+        .sensor-address {
+            color: #007bff;
+            font-weight: 600;
+        }
+
+        @media (max-width: 768px) {
+            .main-container {
+                flex-direction: column;
+            }
+            
+            .field-canvas {
+                height: 400px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🤖 Robotics Localization Viewer</h1>
+        <p>Real-time robot position and sensor visualization</p>
+    </div>
+
+    <div class="main-container">
+        <div class="field-container">
+            <h3 style="margin-bottom: 15px; color: #495057;">Soccer Field View</h3>
+            <div class="field-canvas">
+                <canvas id="fieldCanvas" width="800" height="600"></canvas>
+                <div class="loading-overlay" id="loadingOverlay">
+                    <div class="spinner"></div>
+                    <span>Loading field visualization...</span>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls-panel">
+            <h3 style="margin-bottom: 15px; color: #495057;">Controls</h3>
+            <button class="btn" onclick="refreshData()">🔄 Refresh Data</button>
+            <button class="btn success" onclick="resetPosition()">📍 Reset Position</button>
+            <button class="btn" onclick="toggleVisualization()">👁️ Toggle Rays</button>
+            
+            <div class="robot-info">
+                <h4>Robot Position</h4>
+                <div class="coordinate">
+                    <span class="coordinate-label">X:</span>
+                    <span class="coordinate-value" id="robotX">0.0 mm</span>
+                </div>
+                <div class="coordinate">
+                    <span class="coordinate-label">Y:</span>
+                    <span class="coordinate-value" id="robotY">0.0 mm</span>
+                </div>
+                <div class="coordinate">
+                    <span class="coordinate-label">Angle:</span>
+                    <span class="coordinate-value" id="robotAngle">0.0°</span>
+                </div>
+                <div class="coordinate">
+                    <span class="coordinate-label">Confidence:</span>
+                    <span class="coordinate-value" id="robotConfidence">0.0%</span>
+                </div>
+            </div>
+
+            <div class="sensor-info">
+                <h4>TOF Sensor Data</h4>
+                <div id="sensorList">
+                    <div class="sensor-item">
+                        <span class="sensor-label">Loading sensors...</span>
+                        <span class="sensor-value">-</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="status-panel">
+                <h4 style="margin-bottom: 15px; color: #495057;">System Status</h4>
+                <div class="status-item">
+                    <span class="status-label">Hardware:</span>
+                    <span class="status-value" id="hardwareStatus">Unknown</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Sensors:</span>
+                    <span class="status-value" id="sensorCount">0</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Valid Measurements:</span>
+                    <span class="status-value" id="validMeasurements">0</span>
+                </div>
+                <div class="status-item">
+                    <span class="status-label">Connection:</span>
+                    <span class="status-value" id="connectionStatus">Connecting...</span>
+                </div>
+            </div>
+
+            <div class="error-message" id="errorMessage"></div>
+            <div class="success-message" id="successMessage"></div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>Robotics Localization System | Built with Flask & Canvas</p>
+    </div>
+
+    <script>
+        let canvas, ctx;
+        let fieldData = null;
+        let robotData = null;
+        let showRays = true;
+        let updateInterval;
+
+        // Initialize canvas
+        function initCanvas() {
+            canvas = document.getElementById('fieldCanvas');
+            ctx = canvas.getContext('2d');
+            
+            // Set canvas size to match container
+            const container = canvas.parentElement;
+            const maxWidth = container.clientWidth - 20; // Account for padding
+            const maxHeight = container.clientHeight - 20;
+            
+            // Maintain aspect ratio while fitting in container
+            const aspectRatio = 800 / 600;
+            let canvasWidth = maxWidth;
+            let canvasHeight = maxWidth / aspectRatio;
+            
+            if (canvasHeight > maxHeight) {
+                canvasHeight = maxHeight;
+                canvasWidth = maxHeight * aspectRatio;
+            }
+            
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+            canvas.style.width = canvasWidth + 'px';
+            canvas.style.height = canvasHeight + 'px';
+            
+            // Hide loading overlay
+            document.getElementById('loadingOverlay').style.display = 'none';
+        }
+
+        // Draw the soccer field
+        function drawField() {
+            if (!fieldData) return;
+            
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            // Calculate scale factors
+            const fieldWidth = fieldData.field_bounds.width;
+            const fieldHeight = fieldData.field_bounds.height;
+            const scaleX = canvas.width / fieldWidth;
+            const scaleY = canvas.height / fieldHeight;
+            const scale = Math.min(scaleX, scaleY) * 0.9; // 90% of available space
+            
+            const offsetX = (canvas.width - fieldWidth * scale) / 2;
+            const offsetY = (canvas.height - fieldHeight * scale) / 2;
+            
+            // Draw field background
+            ctx.fillStyle = '#2ecc71';
+            ctx.fillRect(offsetX, offsetY, fieldWidth * scale, fieldHeight * scale);
+            
+            // Draw field border
+            ctx.strokeStyle = '#ffffff';
+            ctx.lineWidth = 3;
+            ctx.strokeRect(offsetX, offsetY, fieldWidth * scale, fieldHeight * scale);
+            
+            // Draw center line
+            ctx.beginPath();
+            ctx.moveTo(offsetX + fieldWidth * scale / 2, offsetY);
+            ctx.lineTo(offsetX + fieldWidth * scale / 2, offsetY + fieldHeight * scale);
+            ctx.stroke();
+            
+            // Draw center circle
+            ctx.beginPath();
+            ctx.arc(offsetX + fieldWidth * scale / 2, offsetY + fieldHeight * scale / 2, 
+                   fieldHeight * scale * 0.15, 0, 2 * Math.PI);
+            ctx.stroke();
+            
+            // Draw walls
+            if (fieldData.walls) {
+                ctx.strokeStyle = '#e74c3c';
+                ctx.lineWidth = 2;
+                fieldData.walls.forEach(wall => {
+                    if (wall.type === 'horizontal') {
+                        const x1 = offsetX + wall.x * scale;
+                        const y1 = offsetY + wall.y_min * scale;
+                        const x2 = offsetX + wall.x * scale;
+                        const y2 = offsetY + wall.y_max * scale;
+                        ctx.beginPath();
+                        ctx.moveTo(x1, y1);
+                        ctx.lineTo(x2, y2);
+                        ctx.stroke();
+                    } else if (wall.type === 'vertical') {
+                        const x1 = offsetX + wall.x_min * scale;
+                        const y1 = offsetY + wall.y * scale;
+                        const x2 = offsetX + wall.x_max * scale;
+                        const y2 = offsetY + wall.y * scale;
+                        ctx.beginPath();
+                        ctx.moveTo(x1, y1);
+                        ctx.lineTo(x2, y2);
+                        ctx.stroke();
+                    }
+                });
+            }
+            
+            // Draw robot if data is available
+            if (robotData) {
+                drawRobot(robotData, offsetX, offsetY, scale);
+            }
+        }
+
+        // Draw robot and sensor rays
+        function drawRobot(data, offsetX, offsetY, scale) {
+            const x = offsetX + data.position[0] * scale;
+            const y = offsetY + data.position[1] * scale;
+            const angle = data.angle;
+            
+            // Draw robot body
+            ctx.fillStyle = '#3498db';
+            ctx.beginPath();
+            ctx.arc(x, y, 15, 0, 2 * Math.PI);
+            ctx.fill();
+            
+            // Draw robot direction
+            ctx.strokeStyle = '#2c3e50';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x + Math.cos(angle) * 25, y + Math.sin(angle) * 25);
+            ctx.stroke();
+            
+            // Draw sensor rays if enabled
+            if (showRays && data.sensor_data && data.sensor_data.tof_distances) {
+                // Draw ray lines
+                ctx.strokeStyle = '#e74c3c';
+                ctx.lineWidth = 3;
+                ctx.setLineDash([8, 4]);
+                
+                Object.entries(data.sensor_data.tof_distances).forEach(([sensorAngle, distance]) => {
+                    const sensorAngleRad = parseFloat(sensorAngle);
+                    const worldAngle = angle + sensorAngleRad;
+                    const rayLength = Math.min(distance * scale, canvas.width, canvas.height);
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(x, y);
+                    ctx.lineTo(x + Math.cos(worldAngle) * rayLength, 
+                              y + Math.sin(worldAngle) * rayLength);
+                    ctx.stroke();
+                });
+                
+                // Draw distance markers at ray endpoints
+                ctx.fillStyle = '#e74c3c';
+                ctx.strokeStyle = '#ffffff';
+                ctx.lineWidth = 2;
+                ctx.setLineDash([]);
+                
+                Object.entries(data.sensor_data.tof_distances).forEach(([sensorAngle, distance]) => {
+                    const sensorAngleRad = parseFloat(sensorAngle);
+                    const worldAngle = angle + sensorAngleRad;
+                    const rayLength = Math.min(distance * scale, canvas.width, canvas.height);
+                    const endX = x + Math.cos(worldAngle) * rayLength;
+                    const endY = y + Math.sin(worldAngle) * rayLength;
+                    
+                    // Draw circle at endpoint
+                    ctx.beginPath();
+                    ctx.arc(endX, endY, 6, 0, 2 * Math.PI);
+                    ctx.fill();
+                    ctx.stroke();
+                    
+                    // Draw distance text
+                    ctx.fillStyle = '#2c3e50';
+                    ctx.font = 'bold 12px Arial';
+                    ctx.textAlign = 'center';
+                    ctx.fillText(`${Math.round(distance)}mm`, endX, endY - 10);
+                });
+                
+                ctx.setLineDash([]);
+            }
+        }
+
+        // Update robot information display
+        function updateRobotInfo(data) {
+            document.getElementById('robotX').textContent = `${data.position[0].toFixed(1)} mm`;
+            document.getElementById('robotY').textContent = `${data.position[1].toFixed(1)} mm`;
+            document.getElementById('robotAngle').textContent = `${(data.angle * 180 / Math.PI).toFixed(1)}°`;
+            document.getElementById('robotConfidence').textContent = `${(data.confidence * 100).toFixed(1)}%`;
+        }
+
+        // Update sensor information display
+        function updateSensorInfo(data) {
+            const sensorList = document.getElementById('sensorList');
+            
+            if (data.sensor_data && data.sensor_data.tof_distances) {
+                const distances = data.sensor_data.tof_distances;
+                const sensorCount = data.sensor_data.sensor_count || 0;
+                const i2cAddresses = data.sensor_data.i2c_addresses || [];
+                
+                // Clear existing content
+                sensorList.innerHTML = '';
+                
+                // Add sensor data
+                Object.entries(distances).forEach(([angle, distance], index) => {
+                    const sensorItem = document.createElement('div');
+                    sensorItem.className = 'sensor-item';
+                    
+                    const angleDeg = (parseFloat(angle) * 180 / Math.PI).toFixed(0);
+                    const distanceRounded = Math.round(distance);
+                    
+                    // Use actual I2C address if available, otherwise simulate
+                    const i2cAddress = i2cAddresses[index] ? 
+                        `0x${i2cAddresses[index].toString(16).toUpperCase()}` : 
+                        `0x${(0x50 + index).toString(16).toUpperCase()}`;
+                    
+                    sensorItem.innerHTML = `
+                        <div>
+                            <span class="sensor-label">Sensor ${index + 1} (${angleDeg}°):</span>
+                            <span class="sensor-address">${i2cAddress}</span>
+                        </div>
+                        <div>
+                            <span class="sensor-distance">${distanceRounded}mm</span>
+                        </div>
+                    `;
+                    
+                    sensorList.appendChild(sensorItem);
+                });
+                
+                // Add summary
+                const summaryItem = document.createElement('div');
+                summaryItem.className = 'sensor-item';
+                summaryItem.style.borderTop = '2px solid #dee2e6';
+                summaryItem.style.marginTop = '10px';
+                summaryItem.style.paddingTop = '10px';
+                summaryItem.innerHTML = `
+                    <div>
+                        <span class="sensor-label">Total Sensors:</span>
+                    </div>
+                    <div>
+                        <span class="sensor-value">${sensorCount}</span>
+                    </div>
+                `;
+                sensorList.appendChild(summaryItem);
+                
+            } else {
+                sensorList.innerHTML = `
+                    <div class="sensor-item">
+                        <span class="sensor-label">No sensor data available</span>
+                        <span class="sensor-value">-</span>
+                    </div>
+                `;
+            }
+        }
+
+        // Update system status
+        function updateStatus(status) {
+            document.getElementById('hardwareStatus').textContent = status.hardware_available ? 'Online' : 'Offline';
+            document.getElementById('hardwareStatus').className = status.hardware_available ? 'status-value online' : 'status-value offline';
+            document.getElementById('sensorCount').textContent = status.sensor_count || 0;
+            document.getElementById('validMeasurements').textContent = status.valid_measurements || 0;
+            document.getElementById('connectionStatus').textContent = 'Connected';
+            document.getElementById('connectionStatus').className = 'status-value online';
+        }
+
+        // Fetch localization data
+        async function fetchLocalizationData() {
+            try {
+                const response = await fetch('/api/localization_data');
+                if (response.ok) {
+                    robotData = await response.json();
+                    updateRobotInfo(robotData);
+                    updateSensorInfo(robotData);
+                    drawField();
+                } else {
+                    throw new Error('Failed to fetch localization data');
+                }
+            } catch (error) {
+                console.error('Error fetching localization data:', error);
+                showError('Failed to connect to localization system');
+            }
+        }
+
+        // Fetch field information
+        async function fetchFieldInfo() {
+            try {
+                const response = await fetch('/api/field_info');
+                if (response.ok) {
+                    fieldData = await response.json();
+                    drawField();
+                }
+            } catch (error) {
+                console.error('Error fetching field info:', error);
+            }
+        }
+
+        // Fetch system status
+        async function fetchStatus() {
+            try {
+                const response = await fetch('/api/status');
+                if (response.ok) {
+                    const status = await response.json();
+                    updateStatus(status);
+                }
+            } catch (error) {
+                console.error('Error fetching status:', error);
+            }
+        }
+
+        // Show error message
+        function showError(message) {
+            const errorDiv = document.getElementById('errorMessage');
+            errorDiv.textContent = message;
+            errorDiv.style.display = 'block';
+            setTimeout(() => {
+                errorDiv.style.display = 'none';
+            }, 5000);
+        }
+
+        // Show success message
+        function showSuccess(message) {
+            const successDiv = document.getElementById('successMessage');
+            successDiv.textContent = message;
+            successDiv.style.display = 'block';
+            setTimeout(() => {
+                successDiv.style.display = 'none';
+            }, 3000);
+        }
+
+        // Control functions
+        function refreshData() {
+            fetchLocalizationData();
+            fetchStatus();
+            showSuccess('Data refreshed');
+        }
+
+        async function resetPosition() {
+            try {
+                const response = await fetch('/api/reset_position', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({x: 0, y: 0})
+                });
+                
+                if (response.ok) {
+                    showSuccess('Position reset to origin');
+                    fetchLocalizationData();
+                } else {
+                    throw new Error('Failed to reset position');
+                }
+            } catch (error) {
+                showError('Failed to reset position');
+            }
+        }
+
+        function toggleVisualization() {
+            showRays = !showRays;
+            drawField();
+        }
+
+        // Initialize the application
+        function init() {
+            initCanvas();
+            fetchFieldInfo();
+            fetchLocalizationData();
+            fetchStatus();
+            
+            // Start update interval
+            updateInterval = setInterval(() => {
+                fetchLocalizationData();
+                fetchStatus();
+            }, 100); // Update every 100ms
+            
+            // Handle window resize
+            window.addEventListener('resize', () => {
+                initCanvas();
+                drawField();
+            });
+        }
+
+        // Start the application when page loads
+        document.addEventListener('DOMContentLoaded', init);
+    </script>
+</body>
+</html>
