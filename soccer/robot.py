@@ -43,6 +43,10 @@ class SoccerRobot:
             print("Starting calibration automatically...")
             self.motor_controller.setup_motors(force_calibration=True)
         
+        # Initialize IMU relative heading
+        if self.imu_sensor.is_available():
+            self.imu_sensor.initialize_relative_heading()
+        
         print("Soccer Robot initialization complete!")
     
     def run(self):

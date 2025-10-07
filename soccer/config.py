@@ -127,23 +127,27 @@ LOCALIZATION_CONFIG = {
     "field_width": 2430,   # 2.43 meters
     "field_height": 1820,  # 1.82 meters
     
-    # Field walls configuration
+    # Field walls configuration (coordinates match robot's coordinate system: 0,0 at field corner)
     "walls": [
-        # field walls
-        {'type': 'vertical',   'x': -2430/2, 'y_min': -1820/2, 'y_max':  1820/2}, # left                   wall
-        {'type': 'vertical',   'x':  2430/2, 'y_min': -1820/2, 'y_max':  1820/2}, # right                  wall
-        {'type': 'horizontal', 'y':  1820/2, 'x_min': -2430/2, 'x_max':  2430/2}, # top                    wall
-        {'type': 'horizontal', 'y': -1820/2, 'x_min': -2430/2, 'x_max':  2430/2}, # bottom                 wall
-        # goal walls
-        {'type': 'vertical',   'x':  989,    'y_min': -450/2,  'y_max':  450/2},  # right goal back
-        {'type': 'vertical',   'x': -989,    'y_min': -450/2,  'y_max':  450/2},  # left  goal back
-        {'type': 'horizontal', 'y':  450/2,  'x_min':  915,    'x_max':  2430/2}, # right goal top    side wall
-        {'type': 'horizontal', 'y': -450/2,  'x_min':  915,    'x_max':  2430/2}, # right goal bottom side wall
-        {'type': 'horizontal', 'y':  450/2,  'x_min': -915,    'x_max': -2430/2}, # left  goal top    side wall
-        {'type': 'horizontal', 'y': -450/2,  'x_min': -915,    'x_max': -2430/2}, # left  goal bottom side wall
+        # field walls (robot coordinate system: 0,0 at bottom-left corner)
+        {'type': 'vertical',   'x': 0,       'y_min': 0,      'y_max': 1820}, # left wall
+        {'type': 'vertical',   'x': 2430,    'y_min': 0,      'y_max': 1820}, # right wall  
+        {'type': 'horizontal', 'y': 1820,    'x_min': 0,      'x_max': 2430}, # top wall
+        {'type': 'horizontal', 'y': 0,        'x_min': 0,      'x_max': 2430}, # bottom wall
+        # goal walls (adjusted for robot coordinate system)
+        {'type': 'vertical',   'x': 989,     'y_min': 685,    'y_max': 1135},  # right goal back
+        {'type': 'vertical',   'x': 1441,    'y_min': 685,    'y_max': 1135},  # left goal back  
+        {'type': 'horizontal', 'y': 1135,    'x_min': 915,    'x_max': 2430}, # right goal top side wall
+        {'type': 'horizontal', 'y': 685,     'x_min': 915,    'x_max': 2430}, # right goal bottom side wall
+        {'type': 'horizontal', 'y': 1135,    'x_min': 0,      'x_max': 915}, # left goal top side wall
+        {'type': 'horizontal', 'y': 685,     'x_min': 0,      'x_max': 915}, # left goal bottom side wall
     ],
     
-    # Localization algorithm parameters
+    # Grid-based localization parameters
+    "grid_resolution": 50,        # Grid cell size in mm (50mm = 5cm)
+    "max_search_radius": 500,     # Maximum search radius in mm
+    
+    # Legacy parameters (kept for compatibility)
     "initial_move_amount": 32,    # Initial search step size in mm
     "decay_rate": 0.5,           # How much to reduce step size each iteration
     "cutoff": 0.05,              # Minimum step size before stopping

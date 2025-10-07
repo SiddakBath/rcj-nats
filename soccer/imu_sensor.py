@@ -28,6 +28,7 @@ class IMUSensor:
         self.bno = None
         self.initial_heading = None
         self.current_heading = 0.0
+        self.is_initialized = False
         
         # Initialize IMU
         self.setup_imu()
@@ -49,11 +50,13 @@ class IMUSensor:
                 elif report == "BNO_REPORT_ROTATION_VECTOR":
                     self.bno.enable_feature(BNO_REPORT_ROTATION_VECTOR)
             
+            self.is_initialized = True
             print("BNO085 IMU initialized successfully")
             
         except Exception as e:
             print(f"Failed to initialize BNO085 IMU: {e}")
             self.bno = None
+            self.is_initialized = False
     
     def get_compass_heading(self):
         """
@@ -97,12 +100,17 @@ class IMUSensor:
         Returns:
             float: Relative heading in degrees (0-360) or None if error
         """
-        if self.bno is None or self.initial_heading is None:
+        if not self.is_available():
             return None
         
         current = self.get_compass_heading()
         if current is None:
             return None
+        
+        # If no initial heading set, set it to current heading
+        if self.initial_heading is None:
+            self.initial_heading = current
+            print(f"Initial heading set to: {current:.1f}°")
         
         # Calculate relative heading
         relative = current - self.initial_heading
@@ -160,7 +168,7 @@ class IMUSensor:
         Returns:
             bool: True if IMU is available, False otherwise
         """
-        return self.bno is not None
+        return self.is_initialized and self.bno is not None
     
     def reset_initial_heading(self):
         """Reset the initial heading to current heading"""
@@ -170,3 +178,24 @@ class IMUSensor:
             print(f"Initial heading reset to: {current:.1f}°")
         else:
             print("Cannot reset initial heading - IMU not available")
+    
+    def initialize_relative_heading(self):
+        """
+        Force initialization of relative heading to current compass heading
+        This should be called when the robot starts or repositions
+        
+        Returns:
+            bool: True if initialization successful, False otherwise
+        """
+        if not self.is_available():
+            print("Cannot initialize relative heading - IMU not available")
+            return False
+        
+        current = self.get_compass_heading()
+        if current is not None:
+            self.initial_heading = current
+            print(f"Relative heading initialized to: {current:.1f}°")
+            return True
+        else:
+            print("Cannot initialize relative heading - no compass reading available")
+            return False
