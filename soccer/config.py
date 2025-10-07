@@ -143,14 +143,7 @@ LOCALIZATION_CONFIG = {
         {'type': 'horizontal', 'y': 685,     'x_min': 0,      'x_max': 915}, # left goal bottom side wall
     ],
     
-    # Grid-based localization parameters
-    "grid_resolution": 50,        # Grid cell size in mm (50mm = 5cm)
-    "max_search_radius": 500,     # Maximum search radius in mm
-    
-    # Legacy parameters (kept for compatibility)
-    "initial_move_amount": 32,    # Initial search step size in mm
-    "decay_rate": 0.5,           # How much to reduce step size each iteration
-    "cutoff": 0.05,              # Minimum step size before stopping
+    # Localization update frequency
     "update_frequency": 0.1       # Localization update frequency in seconds
 }
 

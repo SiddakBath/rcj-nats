@@ -4,18 +4,10 @@ Uses TOF sensors and IMU to triangulate robot position using real measurements
 """
 
 import math
-import time
+import numpy as np
 from config import LOCALIZATION_CONFIG, TOF_CONFIG
 from tof_sensor import TOFManager
 from imu_sensor import IMUSensor
-
-# Try to import numpy, fall back to basic math if not available
-try:
-    import numpy as np
-    HAS_NUMPY = True
-except ImportError:
-    HAS_NUMPY = False
-    print("Warning: numpy not available, using basic math operations")
 
 
 class Localizer:
@@ -34,412 +26,73 @@ class Localizer:
         self.tof_manager = tof_manager if tof_manager is not None else TOFManager(i2c_bus)
         self.imu_sensor = imu_sensor if imu_sensor is not None else IMUSensor(i2c_bus)
         
+        # Reset IMU initial heading when localization starts
+        if self.imu_sensor.is_available():
+            self.imu_sensor.reset_initial_heading()
+            print("IMU initial heading reset for localization")
+        
         # Localization state
         self.position = [0, 0]  # Current position estimate [x, y] in mm
         self.angle = 0.0  # Current angle estimate in radians
-        self.confidence = 0.0  # Confidence in current estimate (0-1)
-        
-        # Smoothing/filtering for stable estimates
-        self.position_history = []  # History of position estimates for smoothing
-        self.angle_history = []    # History of angle estimates for smoothing
-        self.confidence_history = []  # History of confidence estimates for smoothing
-        self.max_history_length = 5  # Number of recent estimates to keep for smoothing
+        self.initialized = False  # Whether we have a valid position estimate
         
         # Field configuration
         self.field_width = LOCALIZATION_CONFIG["field_width"]
         self.field_height = LOCALIZATION_CONFIG["field_height"]
         
-        # Ray casting parameters
-        self.min_sensors = 3  # Minimum sensors needed for localization
+        # Localization parameters
         self.max_distance = TOF_CONFIG["max_distance"]
         self.min_distance = TOF_CONFIG["min_distance"]
-        
-        # Grid search parameters
-        self.grid_resolution = LOCALIZATION_CONFIG.get("grid_resolution", 50)  # mm per grid cell
-        self.max_search_radius = LOCALIZATION_CONFIG.get("max_search_radius", 500)  # mm
-        
-        # Optimization parameters
-        self.best_guess = [0, 0]  # Best position estimate
-        self.best_error = float('inf')  # Best error score
         
         # Field walls for ray casting
         self.walls = LOCALIZATION_CONFIG["walls"]
         
-        print("Grid-based localization system initialized")
+        # Sensor configuration
+        self.sensor_angles = TOF_CONFIG["angles"]
+        self.sensor_offsets = TOF_CONFIG["offsets"]
+        
+        print("Localization system initialized")
     
-    def _cast_ray(self, position, angle):
+    def reset_imu_heading(self):
         """
-        Cast a ray from position at angle and find distance to closest wall
-        
-        Args:
-            position: [x, y] position in mm
-            angle: Ray angle in radians
-            
-        Returns:
-            float: Distance to closest wall intersection
+        Reset the IMU initial heading to current compass reading
+        This should be called when the robot is repositioned or angle gets corrupted
         """
-        # Check if walls list is empty
-        if not self.walls:
-            print("Warning: No walls defined for ray casting")
-            return self.max_distance
-        
-        minimum_distance = float('inf')
-        dx = math.cos(angle)
-        dy = math.sin(angle)
-        
-        for wall in self.walls:
-            if wall['type'] == 'horizontal':
-                # Horizontal wall: y = constant
-                if abs(dy) < 1e-6:  # Ray is parallel to wall
-                    continue
-                    
-                t = (wall['y'] - position[1]) / dy
-                if t <= 0:  # Intersection is behind the ray origin
-                    continue
-                    
-                x = position[0] + t * dx
-                if x < wall['x_min'] or x > wall['x_max']:
-                    continue
-                    
-                y = position[1] + t * dy
-                dist_squared = (x - position[0])**2 + (y - position[1])**2
-                if dist_squared < minimum_distance:
-                    minimum_distance = dist_squared
-                    
-            elif wall['type'] == 'vertical':
-                # Vertical wall: x = constant
-                if abs(dx) < 1e-6:  # Ray is parallel to wall
-                    continue
-                    
-                t = (wall['x'] - position[0]) / dx
-                if t <= 0:  # Intersection is behind the ray origin
-                    continue
-                    
-                y = position[1] + t * dy
-                if y < wall['y_min'] or y > wall['y_max']:
-                    continue
-                    
-                x = position[0] + t * dx
-                dist_squared = (x - position[0])**2 + (y - position[1])**2
-                if dist_squared < minimum_distance:
-                    minimum_distance = dist_squared
-        
-        # Handle case where no walls are hit
-        if minimum_distance == float('inf'):
-            return self.max_distance
-        
-        return math.sqrt(minimum_distance)
-    
-    def _compute_expected_readings_for_position(self, position, robot_angle):
-        """
-        Compute expected sensor readings for a specific position and robot angle
-        This is the correct approach - compute on-the-fly for the actual robot angle
-        
-        Args:
-            position: [x, y] position in mm
-            robot_angle: Robot heading angle in radians (continuous, not discretized)
-            
-        Returns:
-            dict: Angle -> expected distance mapping
-        """
-        expected_readings = {}
-        for sensor in self.tof_manager.sensors:
-            # Calculate world angle for this sensor
-            world_angle = robot_angle + sensor.angle
-            # Cast ray to get expected distance
-            expected_distance = self._cast_ray(position, world_angle)
-            expected_readings[sensor.angle] = expected_distance
-        
-        return expected_readings
-    
-    def _get_expected_readings(self, position, angle):
-        """
-        Get expected sensor readings by computing them on-the-fly for the actual robot angle
-        This is the correct approach - no lookup table needed for continuous angles
-        
-        Args:
-            position: [x, y] position in mm
-            angle: Robot heading angle in radians (continuous)
-            
-        Returns:
-            dict: Angle -> expected distance mapping
-        """
-        return self._compute_expected_readings_for_position(position, angle)
-    
-    def _log_sensor_table(self):
-        """
-        Log expected vs actual sensor readings table for debugging
-        Shows what the algorithm is comparing to verify values look correct
-        """
-        print("\n" + "="*80)
-        print("SENSOR READINGS TABLE (Expected vs Actual)")
-        print("="*80)
-        
-        # Get current position and angle
-        current_pos = self.position
-        current_angle = self.angle
-        
-        # Get expected readings for current position
-        expected_readings = self._compute_expected_readings_for_position(current_pos, current_angle)
-        
-        # Get actual sensor readings
-        actual_readings = {}
-        for sensor in self.tof_manager.sensors:
-            actual_readings[sensor.angle] = self.tof_manager.sensor_distances[sensor.angle]
-        
-        print(f"Robot Position: ({current_pos[0]:.1f}, {current_pos[1]:.1f}) mm")
-        print(f"Robot Angle: {math.degrees(current_angle):.1f}°")
-        print(f"Current Error: {self.best_error:.1f}")
-        print()
-        
-        # Print table header
-        print(f"{'Sensor':<12} {'Angle':<8} {'Expected':<10} {'Actual':<10} {'Diff':<8} {'Status':<6}")
-        print("-" * 70)
-        
-        # Print each sensor
-        for sensor in self.tof_manager.sensors:
-            angle_deg = math.degrees(sensor.angle)
-            expected = expected_readings.get(sensor.angle, 0)
-            actual = actual_readings.get(sensor.angle, 0)
-            diff = abs(expected - actual)
-            
-            # Determine sensor status
-            if self.min_distance <= actual <= self.max_distance:
-                status = "✓"
-            else:
-                status = "✗"
-            
-            # Get sensor direction name
-            if -112.5 <= angle_deg < -67.5:
-                direction = "Left"
-            elif -67.5 <= angle_deg < -22.5:
-                direction = "Front-Left"
-            elif -22.5 <= angle_deg < 22.5:
-                direction = "Front"
-            elif 22.5 <= angle_deg < 67.5:
-                direction = "Front-Right"
-            elif 67.5 <= angle_deg < 112.5:
-                direction = "Right"
-            elif 112.5 <= angle_deg < 157.5:
-                direction = "Back-Right"
-            elif 157.5 <= angle_deg < 202.5:
-                direction = "Back"
-            elif 202.5 <= angle_deg < 247.5:
-                direction = "Back-Left"
-            else:
-                direction = "Front-Left"
-            
-            print(f"{direction:<12} {angle_deg:>6.1f}° {expected:>8.1f}mm {actual:>8.1f}mm {diff:>6.1f}mm {status:>4}")
-        
-        print("-" * 70)
-        
-        # Summary statistics
-        valid_sensors = sum(1 for d in actual_readings.values() 
-                           if self.min_distance <= d <= self.max_distance)
-        total_sensors = len(actual_readings)
-        avg_error = sum(abs(expected_readings.get(angle, 0) - actual_readings.get(angle, 0)) 
-                       for angle in expected_readings.keys()) / len(expected_readings)
-        
-        print(f"Valid Sensors: {valid_sensors}/{total_sensors}")
-        print(f"Average Error: {avg_error:.1f}mm")
-        print(f"Confidence: {self.confidence:.3f}")
-        print("="*80 + "\n")
-    
-    def log_sensor_table_now(self):
-        """
-        Manually trigger sensor table logging for immediate debugging
-        """
-        self._log_sensor_table()
-    
-    def _compute_error(self, position, bot_angle):
-        """
-        Compute error between expected and actual TOF measurements
-        This implements step 4 of the localization framework using the exact approach described
-        
-        Args:
-            position: [x, y] position in mm
-            bot_angle: Robot heading angle in radians
-            
-        Returns:
-            float: Total error (sum of absolute differences)
-        """
-        error = 0.0
-        valid_sensors = 0
-        expected_readings = self._get_expected_readings(position, bot_angle)
-        
-        # Get actual sensor readings
-        actual_readings = {}
-        for sensor in self.tof_manager.sensors:
-            actual_readings[sensor.angle] = self.tof_manager.sensor_distances[sensor.angle]
-        
-        # Compare actual vs expected readings for each sensor
-        for sensor_angle in expected_readings:
-            actual_distance = actual_readings.get(sensor_angle, self.max_distance)
-            expected_distance = expected_readings[sensor_angle]
-            
-            # Only include valid measurements in error calculation
-            if self.min_distance <= actual_distance <= self.max_distance:
-                # Use absolute difference as described in the methodology
-                diff = abs(actual_distance - expected_distance)
-                
-                # Apply improved distance-based weighting to prevent overfitting
-                # Cap weights to prevent overemphasis of very close sensors
-                base_weight = 0.5 + 0.5 / (1.0 + actual_distance / 1000.0)
-                weight = min(base_weight, 1.0)  # Cap at 1.0 to prevent overfitting
-                error += weight * diff
-                valid_sensors += 1
-        
-        # Return total error (not normalized) to match the described approach
-        # The algorithm should find the position with minimum total error
-        return error
-    
-    def _apply_smoothing(self, new_position, new_angle, new_confidence):
-        """
-        Apply smoothing/filtering to position and angle estimates for stability
-        This implements step 6 of the localization framework with smoothing
-        
-        Args:
-            new_position: [x, y] new position estimate in mm
-            new_angle: New angle estimate in radians
-            new_confidence: New confidence value (0-1)
-            
-        Returns:
-            tuple: (smoothed_position, smoothed_angle, smoothed_confidence)
-        """
-        # Add new estimate to history
-        self.position_history.append(new_position.copy())
-        self.angle_history.append(new_angle)
-        self.confidence_history.append(new_confidence)
-        
-        # Keep only recent history
-        if len(self.position_history) > self.max_history_length:
-            self.position_history.pop(0)
-            self.angle_history.pop(0)
-            self.confidence_history.pop(0)
-        
-        # Apply smoothing only if we have enough history and good confidence
-        if len(self.position_history) >= 3 and new_confidence > 0.3:
-            # Use weighted average with more weight on recent estimates
-            weights = [0.1, 0.2, 0.3, 0.4, 0.5][-len(self.position_history):]
-            
-            # Smooth position
-            smoothed_x = sum(pos[0] * w for pos, w in zip(self.position_history, weights)) / sum(weights)
-            smoothed_y = sum(pos[1] * w for pos, w in zip(self.position_history, weights)) / sum(weights)
-            smoothed_position = [smoothed_x, smoothed_y]
-            
-            # Smooth angle using proper circular statistics to avoid wrap-around issues
-            sin_sum = sum(math.sin(angle) * weight for angle, weight in zip(self.angle_history, weights))
-            cos_sum = sum(math.cos(angle) * weight for angle, weight in zip(self.angle_history, weights))
-            smoothed_angle = math.atan2(sin_sum, cos_sum)
-            
-            # Smooth confidence using actual confidence history
-            smoothed_confidence = sum(c * w for c, w in zip(self.confidence_history, weights)) / sum(weights)
-            
-            return smoothed_position, smoothed_angle, smoothed_confidence
+        if self.imu_sensor.is_available():
+            self.imu_sensor.reset_initial_heading()
+            print("IMU initial heading reset to current compass reading")
+            return True
         else:
-            # Not enough history or low confidence, return current values
-            return new_position.copy(), new_angle, new_confidence
+            print("Cannot reset IMU heading - IMU not available")
+            return False
     
-    def _optimize_position(self, bot_angle):
+    def get_imu_status(self):
         """
-        Optimize position using coarse-to-fine iterative grid search
-        This implements step 5 of the localization framework with proper coarse-to-fine approach
-        
-        Args:
-            bot_angle: Robot heading angle in radians
-            
-        Returns:
-            tuple: (position, error) where position is [x, y] in mm
+        Get current IMU status and heading information for debugging
         """
-        # No lookup table needed - compute expected readings on-the-fly for actual robot angle
+        if not self.imu_sensor.is_available():
+            return {
+                'available': False,
+                'error': 'IMU not available'
+            }
         
-        # Start with current best guess or field center
-        if self.best_error == float('inf'):
-            self.best_guess = [self.field_width / 2, self.field_height / 2]
-            self.best_error = self._compute_error(self.best_guess, bot_angle)
-        
-        # Coarse-to-fine grid search with multiple resolution levels
-        resolution_levels = [
-            self.grid_resolution * 8,   # Very coarse (400mm)
-            self.grid_resolution * 4,   # Coarse (200mm) 
-            self.grid_resolution * 2,   # Medium (100mm)
-            self.grid_resolution       # Fine (50mm)
-        ]
-        
-        for current_resolution in resolution_levels:
-            converged = False
-            iterations = 0
-            max_iterations = 5  # Fewer iterations per level for efficiency
+        try:
+            # Get current compass heading
+            compass_heading = self.imu_sensor.get_compass_heading()
+            relative_heading = self.imu_sensor.get_relative_heading()
             
-            while not converged and iterations < max_iterations:
-                converged = True
-                iterations += 1
-                
-                # Search in a grid around current best guess
-                search_range = max(1, int(current_resolution / self.grid_resolution))
-                
-                for dx in range(-search_range, search_range + 1):
-                    for dy in range(-search_range, search_range + 1):
-                        guess_pos = [
-                            self.best_guess[0] + dx * current_resolution,
-                            self.best_guess[1] + dy * current_resolution
-                        ]
-                        
-                        # Keep position within field bounds
-                        guess_pos[0] = max(0, min(self.field_width - 1, guess_pos[0]))
-                        guess_pos[1] = max(0, min(self.field_height - 1, guess_pos[1]))
-                        
-                        error = self._compute_error(guess_pos, bot_angle)
-                        
-                        if error < self.best_error:
-                            converged = False
-                            self.best_error = error
-                            self.best_guess = guess_pos.copy()
-            
-            # Early termination if error is very low
-            if self.best_error < 50:  # Very good match found
-                break
-        
-        return self.best_guess.copy(), self.best_error
-    
-    def _global_grid_search(self, bot_angle):
-        """
-        Perform global grid search to find the best initial position
-        This helps avoid local minima in the optimization
-        
-        Args:
-            bot_angle: Robot heading angle in radians
-            
-        Returns:
-            tuple: (position, error) where position is [x, y] in mm
-        """
-        print("Performing global grid search...")
-        
-        # Use coarser grid for global search
-        coarse_resolution = self.grid_resolution * 4
-        grid_width = int(self.field_width / coarse_resolution)
-        grid_height = int(self.field_height / coarse_resolution)
-        
-        best_position = [self.field_width / 2, self.field_height / 2]
-        best_error = float('inf')
-        
-        # Search entire field with coarse grid
-        for x_idx in range(grid_width):
-            for y_idx in range(grid_height):
-                position = [
-                    x_idx * coarse_resolution + coarse_resolution / 2,
-                    y_idx * coarse_resolution + coarse_resolution / 2
-                ]
-                
-                error = self._compute_error(position, bot_angle)
-                
-                if error < best_error:
-                    best_error = error
-                    best_position = position.copy()
-        
-        print(f"Global search found best position: {best_position}, error: {best_error}")
-        return best_position, best_error
-    
+            return {
+                'available': True,
+                'compass_heading_deg': compass_heading,
+                'relative_heading_deg': relative_heading,
+                'relative_heading_rad': math.radians(relative_heading) if relative_heading is not None else None,
+                'initial_heading_set': self.imu_sensor.initial_heading is not None
+            }
+        except Exception as e:
+            return {
+                'available': True,
+                'error': f'IMU read error: {e}'
+            }
     
     def _update_angle_from_imu(self):
         """
@@ -455,127 +108,26 @@ class Localizer:
     
     def localize(self):
         """
-        Perform localization using grid-based algorithm with real TOF measurements
-        This implements the complete localization framework with continuous updates
+        Perform localization using TOF sensors and IMU triangulation
         
         Returns:
-            tuple: (position, confidence) where position is [x, y] in mm
+            list: [x, y] position in mm
         """
-        # Continuously update TOF sensor readings with real sensor data
+        # Update TOF sensor readings
         self.tof_manager.update_distances()
         
-        # Continuously update robot angle from IMU
+        # Update robot angle from IMU
         self.angle = self._update_angle_from_imu()
         
-        # Log continuous updates for debugging
-        if hasattr(self, '_last_update_time'):
-            time_since_update = time.time() - self._last_update_time
-            if time_since_update > 1.0:  # Log every second
-                sensor_data = self.get_continuous_sensor_data()
-                print(f"[CONTINUOUS UPDATE] Angle: {sensor_data['robot_angle_deg']:.1f}°, "
-                      f"Valid sensors: {sensor_data['valid_sensors']}/{sensor_data['total_sensors']}")
-                self._last_update_time = time.time()
-        else:
-            self._last_update_time = time.time()
+        # Perform triangulation to determine position
+        new_position = self._triangulate_position()
         
-        # Log expected vs actual sensor readings every 5 seconds
-        if hasattr(self, '_last_sensor_table_log_time'):
-            time_since_table_log = time.time() - self._last_sensor_table_log_time
-            if time_since_table_log > 5.0:  # Log every 5 seconds
-                self._log_sensor_table()
-                self._last_sensor_table_log_time = time.time()
-        else:
-            self._last_sensor_table_log_time = time.time()
+        # Update position if triangulation was successful
+        if new_position is not None:
+            self.position = new_position
+            self.initialized = True
         
-        # Get current sensor readings for debugging
-        current_sensor_readings = {}
-        for sensor in self.tof_manager.sensors:
-            current_sensor_readings[sensor.angle] = self.tof_manager.sensor_distances[sensor.angle]
-        
-        # Count valid measurements
-        valid_measurements = 0
-        for sensor in self.tof_manager.sensors:
-            distance = self.tof_manager.sensor_distances[sensor.angle]
-            if self.min_distance <= distance <= self.max_distance:
-                valid_measurements += 1
-        
-        if valid_measurements < self.min_sensors:
-            # Not enough valid measurements - return current position with low confidence
-            print(f"Warning: Only {valid_measurements} valid sensors (need {self.min_sensors})")
-            return self.position.copy(), 0.0
-        
-        # Check if we need to perform global search (first time or high error)
-        if self.best_error == float('inf') or self.best_error > 3000:
-            print("Performing global search for initial position...")
-            position, error = self._global_grid_search(self.angle)
-            self.best_guess = position.copy()
-            self.best_error = error
-        
-        # Optimize position using iterative grid search
-        position, error = self._optimize_position(self.angle)
-        
-        # Validate the localization result
-        is_valid = self.validate_localization(position, self.angle)
-        
-        if not is_valid:
-            print(f"Warning: Localization result failed validation (error: {error:.1f})")
-            # Try global search if validation fails (but limit attempts)
-            if not hasattr(self, '_validation_failures'):
-                self._validation_failures = 0
-            
-            if self._validation_failures < 3:  # Limit to 3 attempts
-                position, error = self._global_grid_search(self.angle)
-                is_valid = self.validate_localization(position, self.angle)
-                if not is_valid:
-                    print(f"Warning: Global search also failed validation (error: {error:.1f})")
-                    self._validation_failures += 1
-                else:
-                    self._validation_failures = 0  # Reset on success
-            else:
-                print("Too many validation failures, accepting current result")
-                is_valid = True  # Accept the result to break the loop
-                self._validation_failures = 0
-        
-        # Calculate confidence based on error and validation
-        # More lenient confidence calculation
-        max_expected_error = 2000.0  # Increased to be more reasonable
-        normalized_error = min(error / max_expected_error, 1.0)
-        confidence = 1.0 - normalized_error
-        
-        # Reduce confidence if validation failed (but not too severely)
-        if not is_valid:
-            confidence *= 0.6  # Less severe penalty for failed validation
-        
-        # Apply smoothing/filtering for stable estimates
-        smoothed_position, smoothed_angle, smoothed_confidence = self._apply_smoothing(
-            position, self.angle, confidence
-        )
-        
-        # Update position estimate with smoothed values
-        self.position = smoothed_position
-        self.angle = smoothed_angle
-        self.confidence = smoothed_confidence
-        
-        # If confidence is very low, consider resetting the localization system
-        if smoothed_confidence < 0.1 and not is_valid:
-            print("Very low confidence detected, considering localization reset...")
-            # Don't reset immediately, but mark for potential reset
-            if hasattr(self, '_consecutive_failures'):
-                self._consecutive_failures += 1
-            else:
-                self._consecutive_failures = 1
-            
-            # Reset if we've had too many consecutive failures
-            if self._consecutive_failures > 10:
-                print("Too many consecutive failures, resetting localization system...")
-                self.reset_localization()
-                self._consecutive_failures = 0
-        else:
-            # Reset failure counter on successful localization
-            if hasattr(self, '_consecutive_failures'):
-                self._consecutive_failures = 0
-        
-        return smoothed_position.copy(), smoothed_confidence
+        return self.position.copy()
     
     def get_position(self):
         """
@@ -595,15 +147,6 @@ class Localizer:
         """
         return self.angle
     
-    def get_confidence(self):
-        """
-        Get current localization confidence
-        
-        Returns:
-            float: Confidence value (0-1)
-        """
-        return self.confidence
-    
     def reset_position(self, x=0, y=0):
         """
         Reset position estimate to given coordinates
@@ -613,19 +156,17 @@ class Localizer:
             y: Y coordinate in mm
         """
         self.position = [x, y]
-        self.confidence = 0.0
-        self.best_guess = [x, y]
-        self.best_error = float('inf')
+        self.initialized = True
         print(f"Position reset to ({x}, {y})")
     
     def reset_localization(self):
         """
         Reset the entire localization system
-        This will force a global search on the next localization call
         """
-        self.best_error = float('inf')
-        self.confidence = 0.0
-        print("Localization system reset - will perform global search next time")
+        self.position = [0, 0]
+        self.angle = 0.0
+        self.initialized = False
+        print("Localization system reset")
     
     def get_sensor_data(self):
         """
@@ -634,61 +175,11 @@ class Localizer:
         Returns:
             dict: Sensor data including distances and angles
         """
-        # Count valid measurements
-        valid_measurements = 0
-        for sensor in self.tof_manager.sensors:
-            distance = self.tof_manager.sensor_distances[sensor.angle]
-            if self.min_distance <= distance <= self.max_distance:
-                valid_measurements += 1
-        
         return {
             'tof_distances': self.tof_manager.get_all_distances(),
             'robot_angle': self.angle,
             'position': self.get_position(),
-            'confidence': self.confidence,
             'sensor_count': self.tof_manager.get_sensor_count(),
-            'valid_measurements': valid_measurements,
-            'best_error': self.best_error if self.best_error != float('inf') else None,
-            'consecutive_failures': getattr(self, '_consecutive_failures', 0),
-            'grid_resolution': self.grid_resolution
-        }
-    
-    def get_continuous_sensor_data(self):
-        """
-        Get continuously updated sensor data for real-time monitoring
-        
-        Returns:
-            dict: Current sensor readings and robot state
-        """
-        # Update sensor readings
-        self.tof_manager.update_distances()
-        
-        # Update robot angle
-        current_angle = self._update_angle_from_imu()
-        
-        # Get current sensor readings
-        sensor_readings = {}
-        valid_sensors = 0
-        
-        for sensor in self.tof_manager.sensors:
-            distance = self.tof_manager.sensor_distances[sensor.angle]
-            sensor_readings[sensor.angle] = distance
-            
-            if self.min_distance <= distance <= self.max_distance:
-                valid_sensors += 1
-        
-        return {
-            'timestamp': time.time(),
-            'robot_angle_deg': math.degrees(current_angle),
-            'robot_angle_rad': current_angle,
-            'sensor_readings': sensor_readings,
-            'valid_sensors': valid_sensors,
-            'total_sensors': len(self.tof_manager.sensors),
-            'sensor_status': {
-                'min_distance': self.min_distance,
-                'max_distance': self.max_distance,
-                'sensors_working': valid_sensors >= self.min_sensors
-            }
         }
     
     def get_localization_debug_info(self):
@@ -703,44 +194,12 @@ class Localizer:
         for sensor in self.tof_manager.sensors:
             actual_readings[sensor.angle] = self.tof_manager.sensor_distances[sensor.angle]
         
-        # Get expected readings for current position
-        expected_readings = self._get_expected_readings(self.position, self.angle)
-        
-        # Calculate individual sensor errors
-        sensor_errors = {}
-        for sensor_angle in expected_readings:
-            actual = actual_readings.get(sensor_angle, self.max_distance)
-            expected = expected_readings[sensor_angle]
-            if self.min_distance <= actual <= self.max_distance:
-                sensor_errors[sensor_angle] = abs(actual - expected)
-        
         return {
             'current_position': self.position.copy(),
             'current_angle_deg': math.degrees(self.angle),
-            'confidence': self.confidence,
-            'best_error': self.best_error if self.best_error != float('inf') else None,
             'actual_readings': actual_readings,
-            'expected_readings': expected_readings,
-            'sensor_errors': sensor_errors,
-            'valid_measurements': sum(1 for d in actual_readings.values() 
-                                   if self.min_distance <= d <= self.max_distance),
-            'grid_info': {
-                'resolution_mm': self.grid_resolution,
-                'computation_method': 'on-the-fly ray casting'
-            }
+            'initialized': self.initialized
         }
-    
-    def is_localized(self, min_confidence=0.5):
-        """
-        Check if robot is well localized
-        
-        Args:
-            min_confidence: Minimum confidence threshold
-            
-        Returns:
-            bool: True if well localized
-        """
-        return self.confidence >= min_confidence
     
     def get_closest_sensor(self):
         """
@@ -755,214 +214,481 @@ class Localizer:
         
         for sensor in self.tof_manager.sensors:
             distance = self.tof_manager.sensor_distances[sensor.angle]
-            if self.min_distance <= distance <= self.max_distance:
-                if distance < closest_distance:
-                    closest_distance = distance
-                    closest_angle = sensor.angle
-                    # Convert angle to direction name
-                    angle_deg = math.degrees(sensor.angle)
-                    # Normalize angle to 0-360 range for consistent comparison
-                    angle_deg = angle_deg % 360
-                    if angle_deg < 0:
-                        angle_deg += 360
-                    
-                    if 337.5 <= angle_deg or angle_deg < 22.5:
-                        closest_direction = "Front"
-                    elif 22.5 <= angle_deg < 67.5:
-                        closest_direction = "Front-Right"
-                    elif 67.5 <= angle_deg < 112.5:
-                        closest_direction = "Right"
-                    elif 112.5 <= angle_deg < 157.5:
-                        closest_direction = "Back-Right"
-                    elif 157.5 <= angle_deg < 202.5:
-                        closest_direction = "Back"
-                    elif 202.5 <= angle_deg < 247.5:
-                        closest_direction = "Back-Left"
-                    elif 247.5 <= angle_deg < 292.5:
-                        closest_direction = "Left"
-                    elif 292.5 <= angle_deg < 337.5:
-                        closest_direction = "Front-Left"
+            if distance < closest_distance:
+                closest_distance = distance
+                closest_angle = sensor.angle
+                # Convert angle to direction name
+                angle_deg = math.degrees(sensor.angle)
+                # Normalize angle to 0-360 range for consistent comparison
+                angle_deg = angle_deg % 360
+                if angle_deg < 0:
+                    angle_deg += 360
+                
+                if 337.5 <= angle_deg or angle_deg < 22.5:
+                    closest_direction = "Front"
+                elif 22.5 <= angle_deg < 67.5:
+                    closest_direction = "Front-Right"
+                elif 67.5 <= angle_deg < 112.5:
+                    closest_direction = "Right"
+                elif 112.5 <= angle_deg < 157.5:
+                    closest_direction = "Back-Right"
+                elif 157.5 <= angle_deg < 202.5:
+                    closest_direction = "Back"
+                elif 202.5 <= angle_deg < 247.5:
+                    closest_direction = "Back-Left"
+                elif 247.5 <= angle_deg < 292.5:
+                    closest_direction = "Left"
+                elif 292.5 <= angle_deg < 337.5:
+                    closest_direction = "Front-Left"
         
         return closest_angle, closest_distance, closest_direction
     
-    def validate_localization(self, position, angle, tolerance=None):
-        """
-        Validate the localization result by checking consistency
-        
-        Args:
-            position: [x, y] position in mm
-            angle: Robot angle in radians
-            tolerance: Maximum allowed error in mm (auto-scales with field size if None)
-            
-        Returns:
-            bool: True if localization is valid
-        """
-        # Auto-scale tolerance with field size if not provided
-        if tolerance is None:
-            tolerance = max(500, 0.1 * min(self.field_width, self.field_height))
-        # Check if position is within field bounds (with some margin)
-        margin = 100  # Allow some margin outside field bounds
-        if (position[0] < -margin or position[0] > self.field_width + margin or 
-            position[1] < -margin or position[1] > self.field_height + margin):
-            return False
-        
-        # Check error consistency (more lenient)
-        error = self._compute_error(position, angle)
-        if error > tolerance:
-            return False
-        
-        # Check if we have enough valid sensors (reduced requirement)
-        valid_measurements = 0
-        for sensor in self.tof_manager.sensors:
-            distance = self.tof_manager.sensor_distances[sensor.angle]
-            if self.min_distance <= distance <= self.max_distance:
-                valid_measurements += 1
-        
-        # Reduced minimum sensor requirement for better robustness
-        return valid_measurements >= max(2, self.min_sensors - 1)
-    
-    def start_continuous_monitoring(self, update_interval=0.1):
-        """
-        Start continuous monitoring of robot angle and TOF sensor distances
-        
-        Args:
-            update_interval: Time between updates in seconds
-        """
-        print("Starting continuous monitoring of robot state...")
-        print(f"Update interval: {update_interval}s")
-        
-        try:
-            while True:
-                # Get continuous sensor data
-                sensor_data = self.get_continuous_sensor_data()
-                
-                # Print current state
-                print(f"[MONITOR] Time: {sensor_data['timestamp']:.1f}s, "
-                      f"Angle: {sensor_data['robot_angle_deg']:.1f}°, "
-                      f"Sensors: {sensor_data['valid_sensors']}/{sensor_data['total_sensors']}")
-                
-                # Print individual sensor readings
-                for angle_rad, distance in sensor_data['sensor_readings'].items():
-                    angle_deg = math.degrees(angle_rad)
-                    status = "✓" if self.min_distance <= distance <= self.max_distance else "✗"
-                    print(f"  Sensor {angle_deg:6.1f}°: {distance:4.0f}mm {status}")
-                
-                time.sleep(update_interval)
-                
-        except KeyboardInterrupt:
-            print("\nStopping continuous monitoring...")
-        except Exception as e:
-            print(f"Error in continuous monitoring: {e}")
-    
     def get_current_robot_state(self):
         """
-        Get the current robot state with continuous updates
+        Get the current robot state
         
         Returns:
             dict: Current robot state including position, angle, and sensor data
         """
-        # Update all sensor data
-        sensor_data = self.get_continuous_sensor_data()
-        
         return {
             'position': self.position.copy(),
             'angle_rad': self.angle,
             'angle_deg': math.degrees(self.angle),
-            'confidence': self.confidence,
-            'sensor_data': sensor_data,
-            'localization_status': {
-                'is_localized': self.is_localized(),
-                'best_error': self.best_error if self.best_error != float('inf') else None,
-                'consecutive_failures': getattr(self, '_consecutive_failures', 0)
+            'sensor_data': self.get_sensor_data(),
+            'initialized': self.initialized
+        }
+    
+    def _ray_cast_to_walls(self, robot_x, robot_y, sensor_angle):
+        """
+        Cast a ray from robot position at given angle to find intersection with field walls
+        
+        Args:
+            robot_x: Robot X position in mm
+            robot_y: Robot Y position in mm  
+            sensor_angle: Sensor angle in radians (relative to robot front)
+            
+        Returns:
+            float: Distance to wall intersection in mm, or None if no intersection
+        """
+        # Calculate absolute sensor direction (robot angle + sensor angle)
+        absolute_angle = self.angle + sensor_angle
+        
+        # Ray direction vector
+        dx = math.cos(absolute_angle)
+        dy = math.sin(absolute_angle)
+        
+        min_distance = float('inf')
+        
+        # Check intersection with each wall
+        for wall in self.walls:
+            if wall['type'] == 'vertical':
+                # Vertical wall: x = wall_x
+                wall_x = wall['x']
+                if abs(dx) < 1e-6:  # Ray is parallel to wall
+                    continue
+                    
+                # Calculate intersection point
+                t = (wall_x - robot_x) / dx
+                if t > 0:  # Ray goes forward
+                    intersection_y = robot_y + t * dy
+                    
+                    # Check if intersection is within wall bounds
+                    if wall['y_min'] <= intersection_y <= wall['y_max']:
+                        distance = t
+                        min_distance = min(min_distance, distance)
+                        
+            elif wall['type'] == 'horizontal':
+                # Horizontal wall: y = wall_y
+                wall_y = wall['y']
+                if abs(dy) < 1e-6:  # Ray is parallel to wall
+                    continue
+                    
+                # Calculate intersection point
+                t = (wall_y - robot_y) / dy
+                if t > 0:  # Ray goes forward
+                    intersection_x = robot_x + t * dx
+                    
+                    # Check if intersection is within wall bounds
+                    if wall['x_min'] <= intersection_x <= wall['x_max']:
+                        distance = t
+                        min_distance = min(min_distance, distance)
+        
+        return min_distance if min_distance != float('inf') else None
+    
+    def _triangulate_position(self):
+        """
+        Triangulate robot position using TOF sensor readings
+        This is the core method that solves for position without circular dependencies
+        
+        Returns:
+            list: [x, y] position in mm, or None if triangulation fails
+        """
+        # Get valid sensor readings
+        valid_readings = []
+        
+        for sensor in self.tof_manager.sensors:
+            distance = self.tof_manager.sensor_distances[sensor.angle]
+            
+            # Check if reading is within valid range
+            if (self.min_distance <= distance <= self.max_distance):
+                valid_readings.append({
+                    'angle': sensor.angle,
+                    'distance': distance,
+                    'offset': sensor.offset
+                })
+        
+        if len(valid_readings) < 3:
+            print(f"Not enough valid sensor readings for triangulation: {len(valid_readings)}")
+            return None
+        
+        # Use geometric triangulation approach
+        # We'll use the fact that each sensor reading gives us a circle of possible positions
+        # The intersection of these circles gives us the robot position
+        
+        best_position = None
+        best_error = float('inf')
+        
+        # Try different combinations of sensors for triangulation
+        from itertools import combinations
+        
+        for sensor_combo in combinations(valid_readings, 3):
+            position = self._solve_position_from_sensors_geometric(sensor_combo)
+            if position is not None:
+                # Calculate error for this position
+                error = self._calculate_position_error(position, valid_readings)
+                if error < best_error:
+                    best_error = error
+                    best_position = position
+        
+        if best_position is not None:
+            print(f"Triangulation successful: position ({best_position[0]:.1f}, {best_position[1]:.1f}), error: {best_error:.1f}")
+        
+        return best_position
+    
+    def _solve_position_from_sensors_geometric(self, sensors):
+        """
+        Solve robot position using 3 sensor readings with geometric approach
+        This method avoids circular dependencies by using a different approach
+        
+        Args:
+            sensors: List of 3 sensor readings with angle, distance, offset
+            
+        Returns:
+            list: [x, y] position in mm, or None if solution fails
+        """
+        try:
+            # For each sensor, we know:
+            # 1. The sensor's relative angle from robot front
+            # 2. The distance reading to a wall
+            # 3. The sensor's offset from robot center
+            
+            # We need to find the robot position such that:
+            # - Each sensor's distance reading matches the expected distance to walls
+            
+            # Use iterative approach to solve for robot position
+            # Start with a reasonable initial guess (field center)
+            initial_guess = [self.field_width / 2, self.field_height / 2]
+            
+            # Use optimization to find position that minimizes error
+            position = self._optimize_position(initial_guess, sensors)
+            
+            if position is not None:
+                # Validate the solution
+                if self._validate_position(position, sensors):
+                    return position
+            
+        except Exception as e:
+            print(f"Error in geometric position solving: {e}")
+        
+        return None
+    
+    def _optimize_position(self, initial_guess, sensors):
+        """
+        Optimize robot position using sensor readings
+        Uses a grid search approach to find the best position
+        
+        Args:
+            initial_guess: Initial position guess [x, y]
+            sensors: List of sensor readings
+            
+        Returns:
+            list: [x, y] position or None if optimization fails
+        """
+        # Grid search parameters
+        search_range = 500  # Search within 500mm of initial guess
+        grid_size = 50  # 50mm grid resolution
+        
+        best_position = None
+        best_error = float('inf')
+        
+        # Search in a grid around the initial guess
+        for dx in range(-search_range, search_range + 1, grid_size):
+            for dy in range(-search_range, search_range + 1, grid_size):
+                test_x = initial_guess[0] + dx
+                test_y = initial_guess[1] + dy
+                
+                # Check if position is within field bounds
+                if (0 <= test_x <= self.field_width and 
+                    0 <= test_y <= self.field_height):
+                    
+                    # Calculate error for this position
+                    error = self._calculate_position_error([test_x, test_y], sensors)
+                    
+                    if error < best_error:
+                        best_error = error
+                        best_position = [test_x, test_y]
+        
+        # If we found a reasonable solution, do fine-tuning
+        if best_position is not None and best_error < 1000:  # 1 meter error threshold
+            # Fine-tune the position with smaller grid
+            fine_position = self._fine_tune_position(best_position, sensors)
+            if fine_position is not None:
+                return fine_position
+            return best_position
+        
+        return None
+    
+    def _fine_tune_position(self, coarse_position, sensors):
+        """
+        Fine-tune position using smaller grid search
+        
+        Args:
+            coarse_position: Coarse position estimate
+            sensors: List of sensor readings
+            
+        Returns:
+            list: Fine-tuned position or None
+        """
+        fine_range = 100  # 100mm fine search range
+        fine_grid = 10  # 10mm fine grid resolution
+        
+        best_position = None
+        best_error = float('inf')
+        
+        for dx in range(-fine_range, fine_range + 1, fine_grid):
+            for dy in range(-fine_range, fine_range + 1, fine_grid):
+                test_x = coarse_position[0] + dx
+                test_y = coarse_position[1] + dy
+                
+                if (0 <= test_x <= self.field_width and 
+                    0 <= test_y <= self.field_height):
+                    
+                    error = self._calculate_position_error([test_x, test_y], sensors)
+                    
+                    if error < best_error:
+                        best_error = error
+                        best_position = [test_x, test_y]
+        
+        return best_position if best_error < 500 else None  # 500mm error threshold
+    
+    def _calculate_position_error(self, position, all_readings):
+        """
+        Calculate error between expected and measured distances for a given position
+        
+        Args:
+            position: [x, y] position to test
+            all_readings: All sensor readings
+            
+        Returns:
+            float: Total error in mm
+        """
+        total_error = 0
+        valid_count = 0
+        
+        for reading in all_readings:
+            # Calculate expected distance from position to walls
+            expected_distance = self._ray_cast_to_walls(position[0], position[1], reading['angle'])
+            
+            if expected_distance is not None:
+                error = abs(reading['distance'] - expected_distance)
+                total_error += error
+                valid_count += 1
+        
+        # Return average error per valid sensor
+        return total_error / valid_count if valid_count > 0 else float('inf')
+    
+    def _validate_position(self, position, sensors):
+        """
+        Validate that a position is consistent with sensor readings
+        
+        Args:
+            position: [x, y] position to validate
+            sensors: List of sensor readings
+            
+        Returns:
+            bool: True if position is valid
+        """
+        # Check if position is within field bounds
+        if not (0 <= position[0] <= self.field_width and 
+                0 <= position[1] <= self.field_height):
+            return False
+        
+        # Check if error is reasonable
+        error = self._calculate_position_error(position, sensors)
+        return error < 200  # 200mm error threshold
+    
+    def get_localization_accuracy(self):
+        """
+        Get current localization accuracy based on sensor readings
+        
+        Returns:
+            dict: Accuracy information including error estimates
+        """
+        if len(self.tof_manager.sensors) < 3:
+            return {
+                'accuracy': 'poor',
+                'error_estimate': 'insufficient_sensors',
+                'sensor_count': len(self.tof_manager.sensors)
+            }
+        
+        # Calculate position error for current position
+        valid_readings = []
+        for sensor in self.tof_manager.sensors:
+            distance = self.tof_manager.sensor_distances[sensor.angle]
+            if self.min_distance <= distance <= self.max_distance:
+                valid_readings.append({
+                    'angle': sensor.angle,
+                    'distance': distance
+                })
+        
+        if len(valid_readings) < 3:
+            return {
+                'accuracy': 'poor',
+                'error_estimate': 'insufficient_valid_readings',
+                'valid_sensor_count': len(valid_readings)
+            }
+        
+        # Calculate error for current position
+        current_error = self._calculate_position_error(self.position, valid_readings)
+        avg_error = current_error
+        
+        # Determine accuracy level
+        if avg_error < 50:
+            accuracy = 'excellent'
+        elif avg_error < 100:
+            accuracy = 'good'
+        elif avg_error < 200:
+            accuracy = 'fair'
+        else:
+            accuracy = 'poor'
+        
+        return {
+            'accuracy': accuracy,
+            'error_estimate': avg_error,
+            'total_error': current_error,
+            'valid_sensor_count': len(valid_readings),
+            'sensor_count': len(self.tof_manager.sensors)
+        }
+    
+    def get_field_bounds_check(self):
+        """
+        Check if current position is within field bounds
+        
+        Returns:
+            dict: Bounds check information
+        """
+        x, y = self.position
+        
+        within_bounds = (0 <= x <= self.field_width and 
+                        0 <= y <= self.field_height)
+        
+        return {
+            'within_bounds': within_bounds,
+            'position': self.position.copy(),
+            'field_bounds': {
+                'width': self.field_width,
+                'height': self.field_height
+            },
+            'distance_to_edges': {
+                'left': x,
+                'right': self.field_width - x,
+                'bottom': y,
+                'top': self.field_height - y
             }
         }
-
-
-# Test and demonstration code
-if __name__ == "__main__":
-    print("Testing real measurement localization system...")
-    print("Available test modes:")
-    print("1. Standard localization loop")
-    print("2. Continuous monitoring mode")
-    print("3. Single state check")
     
-    # Initialize I2C bus
-    import board
-    import busio
-    i2c = busio.I2C(board.SCL, board.SDA)
+    def get_sensor_health_status(self):
+        """
+        Get health status of all TOF sensors
+        
+        Returns:
+            dict: Sensor health information
+        """
+        sensor_status = []
+        healthy_count = 0
+        
+        for sensor in self.tof_manager.sensors:
+            distance = self.tof_manager.sensor_distances[sensor.angle]
+            is_healthy = self.min_distance <= distance <= self.max_distance
+            
+            if is_healthy:
+                healthy_count += 1
+            
+            sensor_status.append({
+                'angle_degrees': math.degrees(sensor.angle),
+                'distance': distance,
+                'healthy': is_healthy,
+                'address': sensor.address
+            })
+        
+        return {
+            'total_sensors': len(self.tof_manager.sensors),
+            'healthy_sensors': healthy_count,
+            'sensor_status': sensor_status,
+            'health_percentage': (healthy_count / len(self.tof_manager.sensors)) * 100 if self.tof_manager.sensors else 0
+        }
     
-    # Create localization system
-    localizer = Localizer(i2c_bus=i2c)
-    
-    # Check if user wants continuous monitoring
-    try:
-        choice = input("Enter test mode (1-3, default=1): ").strip()
-        if choice == "2":
-            print("Starting continuous monitoring mode...")
-            localizer.start_continuous_monitoring(update_interval=0.5)
-            exit(0)
-        elif choice == "3":
-            print("Single state check:")
-            robot_state = localizer.get_current_robot_state()
-            print(f"Position: {robot_state['position']}")
-            print(f"Angle: {robot_state['angle_deg']:.1f}°")
-            print(f"Valid sensors: {robot_state['sensor_data']['valid_sensors']}/{robot_state['sensor_data']['total_sensors']}")
-            exit(0)
-    except:
-        # Default to standard mode if input fails
-        pass
-    
-    if localizer.tof_manager.get_sensor_count() == 0:
-        print("No TOF sensors available for localization!")
-        exit(1)
-    
-    print(f"Localization system ready with {localizer.tof_manager.get_sensor_count()} TOF sensors")
-    print("Starting continuous localization loop (press Ctrl+C to stop)...")
-    
-    # Sensor logging variables
-    last_sensor_log_time = 0
-    sensor_log_interval = 2.0  # Log closest sensor every 2 seconds
-    
-    # Localization loop with continuous updates
-    try:
-        while True:
-            start_time = time.time()
-            current_time = time.time()
+    def test_localization_system(self):
+        """
+        Test the localization system with known positions
+        
+        Returns:
+            dict: Test results and diagnostics
+        """
+        print("Testing localization system...")
+        
+        # Test known positions
+        test_positions = [
+            [1215, 910],  # Center of field
+            [500, 500],   # Near corner
+            [2000, 1500], # Near opposite corner
+            [1215, 100],  # Near bottom wall
+            [1215, 1720], # Near top wall
+        ]
+        
+        results = []
+        
+        for test_pos in test_positions:
+            print(f"Testing position: ({test_pos[0]}, {test_pos[1]})")
             
-            # Perform localization using real measurements with continuous updates
-            position, confidence = localizer.localize()
-            angle = localizer.get_angle()
+            # Set position and test ray casting
+            original_pos = self.position.copy()
+            self.position = test_pos.copy()
             
-            localization_time = time.time() - start_time
+            # Test ray casting for each sensor
+            ray_cast_results = {}
+            for sensor in self.tof_manager.sensors:
+                distance = self._ray_cast_to_walls(test_pos[0], test_pos[1], sensor.angle)
+                ray_cast_results[math.degrees(sensor.angle)] = distance
             
-            # Print results with continuous monitoring info
-            print(f"Position: ({position[0]:.1f}, {position[1]:.1f}) mm, "
-                  f"Angle: {math.degrees(angle):.1f}°, "
-                  f"Confidence: {confidence:.3f}, "
-                  f"Error: {localizer.best_error:.1f}, "
-                  f"Time: {localization_time*1000:.1f}ms")
+            # Restore original position
+            self.position = original_pos
             
-            # Get continuous robot state
-            robot_state = localizer.get_current_robot_state()
-            print(f"[CONTINUOUS] Valid sensors: {robot_state['sensor_data']['valid_sensors']}/{robot_state['sensor_data']['total_sensors']}")
-            
-            # Log closest sensor every 2 seconds
-            if current_time - last_sensor_log_time >= sensor_log_interval:
-                closest_angle, closest_distance, closest_direction = localizer.get_closest_sensor()
-                if closest_angle is not None:
-                    print(f"[SENSOR LOG] Closest sensor: {closest_direction} "
-                          f"(angle: {math.degrees(closest_angle):.1f}°, "
-                          f"distance: {closest_distance:.1f}mm)")
-                else:
-                    print("[SENSOR LOG] No valid sensors detected")
-                last_sensor_log_time = current_time
-            
-            # Wait before next localization
-            time.sleep(LOCALIZATION_CONFIG["update_frequency"])
-            
-    except KeyboardInterrupt:
-        print("\nStopping localization loop...")
-    except Exception as e:
-        print(f"Error in localization test: {e}")
-        import traceback
-        traceback.print_exc()
+            results.append({
+                'test_position': test_pos,
+                'ray_cast_distances': ray_cast_results,
+                'sensor_count': len(ray_cast_results)
+            })
+        
+        # Test triangulation with current readings
+        current_accuracy = self.get_localization_accuracy()
+        sensor_health = self.get_sensor_health_status()
+        bounds_check = self.get_field_bounds_check()
+        
+        return {
+            'test_results': results,
+            'current_accuracy': current_accuracy,
+            'sensor_health': sensor_health,
+            'bounds_check': bounds_check,
+            'system_status': 'operational' if sensor_health['health_percentage'] > 50 else 'degraded'
+        }

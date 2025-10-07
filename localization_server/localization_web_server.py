@@ -102,11 +102,23 @@ class LocalizationWebServer:
             try:
                 if self.localizer:
                     # Perform localization
-                    position, confidence = self.localizer.localize()
+                    position = self.localizer.localize()
                     angle = self.localizer.get_angle()
                     
                     # Get sensor data
                     sensor_data = self.localizer.get_sensor_data()
+                    
+                    # Calculate confidence based on localization accuracy
+                    accuracy_info = self.localizer.get_localization_accuracy()
+                    confidence = 0.0
+                    if accuracy_info['accuracy'] == 'excellent':
+                        confidence = 0.95
+                    elif accuracy_info['accuracy'] == 'good':
+                        confidence = 0.8
+                    elif accuracy_info['accuracy'] == 'fair':
+                        confidence = 0.6
+                    else:
+                        confidence = 0.3
                     
                     # Update data with thread safety
                     with self.data_lock:
@@ -189,12 +201,56 @@ class LocalizationWebServer:
         @self.app.route('/api/status')
         def api_status():
             """API endpoint to get system status"""
-            return jsonify({
+            status_data = {
                 'hardware_available': self.hardware_available,
                 'sensor_count': self.localization_data.get('sensor_data', {}).get('sensor_count', 0),
                 'valid_measurements': self.localization_data.get('sensor_data', {}).get('valid_measurements', 0),
                 'timestamp': time.time()
-            })
+            }
+            
+            # Add localization system status if available
+            if self.localizer:
+                try:
+                    sensor_health = self.localizer.get_sensor_health_status()
+                    bounds_check = self.localizer.get_field_bounds_check()
+                    accuracy = self.localizer.get_localization_accuracy()
+                    
+                    status_data.update({
+                        'sensor_health_percentage': sensor_health.get('health_percentage', 0),
+                        'healthy_sensors': sensor_health.get('healthy_sensors', 0),
+                        'within_bounds': bounds_check.get('within_bounds', True),
+                        'localization_accuracy': accuracy.get('accuracy', 'unknown'),
+                        'localization_error': accuracy.get('error_estimate', 0)
+                    })
+                except Exception as e:
+                    print(f"Error getting localization status: {e}")
+            
+            return jsonify(status_data)
+        
+        @self.app.route('/api/localization_info')
+        def api_localization_info():
+            """API endpoint to get detailed localization information"""
+            if not self.localizer:
+                return jsonify({'error': 'Localizer not available'}), 400
+            
+            try:
+                # Get comprehensive localization data
+                robot_state = self.localizer.get_current_robot_state()
+                sensor_health = self.localizer.get_sensor_health_status()
+                bounds_check = self.localizer.get_field_bounds_check()
+                accuracy = self.localizer.get_localization_accuracy()
+                imu_status = self.localizer.get_imu_status()
+                
+                return jsonify({
+                    'robot_state': robot_state,
+                    'sensor_health': sensor_health,
+                    'bounds_check': bounds_check,
+                    'accuracy': accuracy,
+                    'imu_status': imu_status,
+                    'timestamp': time.time()
+                })
+            except Exception as e:
+                return jsonify({'error': str(e)}), 500
     
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals gracefully"""

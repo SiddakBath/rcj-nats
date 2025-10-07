@@ -4,6 +4,7 @@ Handles BNO085 IMU sensor for compass and orientation data
 """
 
 import math
+import time
 from adafruit_bno08x import (
     BNO_REPORT_ACCELEROMETER,
     BNO_REPORT_GYROSCOPE,
@@ -171,13 +172,34 @@ class IMUSensor:
         return self.is_initialized and self.bno is not None
     
     def reset_initial_heading(self):
-        """Reset the initial heading to current heading"""
-        current = self.get_compass_heading()
-        if current is not None:
-            self.initial_heading = current
-            print(f"Initial heading reset to: {current:.1f}°")
+        """Reset the initial heading to current heading, waiting for a stable value."""
+        if not self.is_available():
+            print("Cannot reset IMU heading - IMU not available")
+            return False
+
+        print("Waiting for stable IMU heading...")
+        headings = []
+        # Try for a short period to get a stable reading
+        for _ in range(10):
+            heading = self.get_compass_heading()
+            if heading is not None and heading > 0.1:  # Ignore initial zero readings
+                headings.append(heading)
+            time.sleep(0.05)  # 50ms delay
+
+        if not headings:
+            # If still no valid heading, try one last time
+            final_heading = self.get_compass_heading()
+            if final_heading is not None:
+                 self.initial_heading = final_heading
+            else:
+                print("Failed to get a stable IMU heading for reset.")
+                return False
         else:
-            print("Cannot reset initial heading - IMU not available")
+            # Use the last collected heading
+            self.initial_heading = headings[-1]
+        
+        print(f"IMU initial heading set to: {self.initial_heading:.1f}°")
+        return True
     
     def initialize_relative_heading(self):
         """

@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Test script for the improved localization algorithm
-This script tests the grid-based localization without requiring hardware
+This script tests the localization system without requiring hardware
 """
 
 import sys
@@ -95,8 +95,8 @@ def test_localization_algorithm():
     )
     
     print(f"Field dimensions: {localizer.field_width} x {localizer.field_height} mm")
-    print(f"Grid resolution: {localizer.grid_resolution} mm")
-    print(f"Angle resolution: {localizer.angle_resolution} bins")
+    print(f"Min sensors required: {localizer.min_sensors}")
+    print(f"Distance range: {localizer.min_distance} - {localizer.max_distance} mm")
     
     # Test different robot positions
     test_positions = [
@@ -140,17 +140,13 @@ def test_localization_algorithm():
         is_valid = localizer.validate_localization(position, localizer.angle)
         print(f"Validation: {'PASS' if is_valid else 'FAIL'}")
     
-    print("\n--- Testing lookup table initialization ---")
-    if not localizer.lookup_table_initialized:
-        print("Initializing lookup table...")
-        localizer._initialize_lookup_table()
-        print(f"Lookup table initialized with {len(localizer.lookup_table)} entries")
-    else:
-        print("Lookup table already initialized")
+    print("\n--- Testing sensor data ---")
+    sensor_data = localizer.get_sensor_data()
+    print(f"Sensor data: {sensor_data}")
     
-    print("\n--- Testing global grid search ---")
-    position, error = localizer._global_grid_search(0.0)
-    print(f"Global search result: ({position[0]:.1f}, {position[1]:.1f}) mm, error: {error:.1f}")
+    print("\n--- Testing debug info ---")
+    debug_info = localizer.get_localization_debug_info()
+    print(f"Debug info: {debug_info}")
     
     print("\nLocalization algorithm test completed!")
 
