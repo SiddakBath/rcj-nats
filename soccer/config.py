@@ -31,7 +31,7 @@ GOAL_DETECTION = {
     "blue_goal": {
         "lower": [89, 75, 78],   # Lower HSV for blue
         "upper": [145, 255, 255], # Upper HSV for blue
-        "min_contour_area": 100,
+        "min_contour_area": 50,  # Reduced for smaller goals
         "max_contour_area": 50000,
         "aspect_ratio_min": 0.3,  # Minimum aspect ratio for goal detection
         "aspect_ratio_max": 3.0, # Maximum aspect ratio for goal detection
@@ -41,15 +41,15 @@ GOAL_DETECTION = {
     "yellow_goal": {
         "lower": [18, 179, 179],  # Lower HSV for yellow
         "upper": [65, 255, 255],  # Upper HSV for yellow
-        "min_contour_area": 100,
+        "min_contour_area": 50,  # Reduced for smaller goals
         "max_contour_area": 50000,
         "aspect_ratio_min": 0.3,  # Minimum aspect ratio for goal detection
         "aspect_ratio_max": 3.0, # Maximum aspect ratio for goal detection
     },
     
     # Goal detection parameters
-    "min_goal_width": 50,      # Minimum goal width in pixels
-    "min_goal_height": 30,     # Minimum goal height in pixels
+    "min_goal_width": 25,      # Minimum goal width in pixels (reduced for smaller goals)
+    "min_goal_height": 15,     # Minimum goal height in pixels (reduced for smaller goals)
     "goal_center_tolerance": 0.4,  # Goal must be within 40% of frame center horizontally
 }
 
