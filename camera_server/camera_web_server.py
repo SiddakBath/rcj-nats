@@ -22,6 +22,21 @@ class CameraWebServer:
         self.lower_orange = np.array([0, 132, 61])
         self.upper_orange = np.array([14, 255, 255])
         
+        # Goal detection parameters
+        # Blue goal (target goal)
+        self.blue_goal_lower = np.array([100, 50, 50])
+        self.blue_goal_upper = np.array([130, 255, 255])
+        
+        # Yellow goal (opponent goal)
+        self.yellow_goal_lower = np.array([20, 100, 100])
+        self.yellow_goal_upper = np.array([30, 255, 255])
+        
+        # Goal detection thresholds
+        self.min_goal_area = 100
+        self.max_goal_area = 50000
+        self.min_goal_width = 50
+        self.min_goal_height = 30
+        
         # Circular mask parameters to ignore center area
         self.mask_center_x = 320  # Center of 640x480 frame
         self.mask_center_y = 240
@@ -35,6 +50,22 @@ class CameraWebServer:
             'center': (0, 0),
             'radius': 0,
             'area': 0
+        }
+        self.last_goal_data = {
+            'blue_goal': {
+                'detected': False,
+                'center': (0, 0),
+                'width': 0,
+                'height': 0,
+                'area': 0
+            },
+            'yellow_goal': {
+                'detected': False,
+                'center': (0, 0),
+                'width': 0,
+                'height': 0,
+                'area': 0
+            }
         }
         
         # Start frame capture thread
@@ -60,7 +91,7 @@ class CameraWebServer:
                 # Convert to HSV for processing
                 hsv_frame = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
                 
-                # Process frame for ball detection
+                # Process frame for ball and goal detection
                 processed_frame = self._process_frame(hsv_frame, frame)
                 
                 with self.frame_lock:
@@ -128,6 +159,9 @@ class CameraWebServer:
             cv2.putText(display_frame, "No ball detected", 
                        (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (255, 0, 0), 2)
         
+        # Detect goals in the frame
+        blue_goal, yellow_goal = self._detect_goals(hsv_frame, display_frame)
+        
         # Add center crosshair
         height, width = display_frame.shape[:2]
         center_x, center_y = width // 2, height // 2
@@ -138,6 +172,24 @@ class CameraWebServer:
         cv2.circle(display_frame, (self.mask_center_x, self.mask_center_y), self.mask_radius, (0, 0, 255), 2)
         cv2.putText(display_frame, f"Mask R: {self.mask_radius}", 
                    (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 0, 255), 1)
+        
+        # Add goal detection status text
+        goal_status_y = 90
+        if blue_goal['detected']:
+            cv2.putText(display_frame, f"Blue Goal: ({blue_goal['center'][0]}, {blue_goal['center'][1]})", 
+                       (10, goal_status_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (255, 0, 0), 1)
+            goal_status_y += 20
+        else:
+            cv2.putText(display_frame, "Blue Goal: Not detected", 
+                       (10, goal_status_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (128, 128, 128), 1)
+            goal_status_y += 20
+        
+        if yellow_goal['detected']:
+            cv2.putText(display_frame, f"Yellow Goal: ({yellow_goal['center'][0]}, {yellow_goal['center'][1]})", 
+                       (10, goal_status_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (0, 255, 255), 1)
+        else:
+            cv2.putText(display_frame, "Yellow Goal: Not detected", 
+                       (10, goal_status_y), cv2.FONT_HERSHEY_SIMPLEX, 0.5, (128, 128, 128), 1)
         
         return display_frame
     
@@ -154,6 +206,100 @@ class CameraWebServer:
         masked_result = cv2.bitwise_and(mask, circle_mask)
         
         return masked_result
+    
+    def _detect_goals(self, hsv_frame, display_frame):
+        """Detect blue and yellow goals in the frame"""
+        # Detect blue goal (target goal)
+        blue_goal_result = self._detect_single_goal(hsv_frame, self.blue_goal_lower, self.blue_goal_upper, "blue")
+        self.last_goal_data['blue_goal'] = blue_goal_result
+        
+        # Detect yellow goal (opponent goal)
+        yellow_goal_result = self._detect_single_goal(hsv_frame, self.yellow_goal_lower, self.yellow_goal_upper, "yellow")
+        self.last_goal_data['yellow_goal'] = yellow_goal_result
+        
+        # Draw goal visualizations
+        self._draw_goal_visualizations(display_frame, blue_goal_result, yellow_goal_result)
+        
+        return blue_goal_result, yellow_goal_result
+    
+    def _detect_single_goal(self, hsv_frame, lower_color, upper_color, goal_type):
+        """Detect a single goal using HSV color filtering"""
+        # Create HSV mask for the goal color
+        mask = cv2.inRange(hsv_frame, lower_color, upper_color)
+        
+        # Apply circular mask to ignore center area
+        mask = self._apply_circular_mask(mask)
+        
+        # Find contours
+        contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
+        
+        # Filter contours by area
+        filtered_contours = [c for c in contours if 
+                           cv2.contourArea(c) > self.min_goal_area and 
+                           cv2.contourArea(c) < self.max_goal_area]
+        
+        if not filtered_contours:
+            return {
+                'detected': False,
+                'center': (0, 0),
+                'width': 0,
+                'height': 0,
+                'area': 0
+            }
+        
+        # Find the largest contour
+        largest_contour = max(filtered_contours, key=cv2.contourArea)
+        
+        # Get bounding rectangle
+        x, y, w, h = cv2.boundingRect(largest_contour)
+        center = (x + w // 2, y + h // 2)
+        
+        # Check if goal meets size requirements
+        if w < self.min_goal_width or h < self.min_goal_height:
+            return {
+                'detected': False,
+                'center': (0, 0),
+                'width': 0,
+                'height': 0,
+                'area': 0
+            }
+        
+        return {
+            'detected': True,
+            'center': center,
+            'width': w,
+            'height': h,
+            'area': cv2.contourArea(largest_contour)
+        }
+    
+    def _draw_goal_visualizations(self, display_frame, blue_goal, yellow_goal):
+        """Draw goal visualizations including lines from center to goals"""
+        height, width = display_frame.shape[:2]
+        center_x, center_y = width // 2, height // 2
+        
+        # Draw blue goal (target goal)
+        if blue_goal['detected']:
+            center = blue_goal['center']
+            # Draw rectangle around goal
+            x, y = center[0] - blue_goal['width']//2, center[1] - blue_goal['height']//2
+            cv2.rectangle(display_frame, (x, y), (x + blue_goal['width'], y + blue_goal['height']), (255, 0, 0), 2)
+            # Draw line from center to goal
+            cv2.line(display_frame, (center_x, center_y), center, (255, 0, 0), 3)
+            # Add text label
+            cv2.putText(display_frame, f"BLUE GOAL: ({center[0]}, {center[1]})", 
+                       (center[0] + 10, center[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+        
+        # Draw yellow goal (opponent goal)
+        if yellow_goal['detected']:
+            center = yellow_goal['center']
+            # Draw rectangle around goal
+            x, y = center[0] - yellow_goal['width']//2, center[1] - yellow_goal['height']//2
+            cv2.rectangle(display_frame, (x, y), (x + yellow_goal['width'], y + yellow_goal['height']), (0, 255, 255), 2)
+            # Draw line from center to goal
+            cv2.line(display_frame, (center_x, center_y), center, (0, 255, 255), 3)
+            # Add text label
+            cv2.putText(display_frame, f"YELLOW GOAL: ({center[0]}, {center[1]})", 
+                       (center[0] + 10, center[1] - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, (0, 255, 255), 2)
     
     def _generate_frames(self):
         """Generate frames for streaming"""
@@ -182,10 +328,11 @@ class CameraWebServer:
         
         @self.app.route('/api/status')
         def api_status():
-            """API endpoint to get camera and ball detection status"""
+            """API endpoint to get camera, ball detection, and goal detection status"""
             return jsonify({
                 'camera_status': 'online',
                 'ball_detection': self.last_ball_data,
+                'goal_detection': self.last_goal_data,
                 'timestamp': time.time()
             })
         
@@ -193,6 +340,11 @@ class CameraWebServer:
         def api_ball_data():
             """API endpoint to get current ball detection data"""
             return jsonify(self.last_ball_data)
+        
+        @self.app.route('/api/goal_data')
+        def api_goal_data():
+            """API endpoint to get current goal detection data"""
+            return jsonify(self.last_goal_data)
         
         @self.app.route('/api/stop_robot', methods=['POST'])
         def api_stop_robot():

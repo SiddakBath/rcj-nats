@@ -159,6 +159,7 @@ class ControlSystem:
             'forward_speed': self.max_speed * self.forward_speed
         }
     
+    
     def get_control_parameters(self):
         """Get current control parameters"""
         return {

@@ -93,7 +93,7 @@ class SoccerRobot:
                           f"FL:{speeds[2]//1000}k FR:{speeds[3]//1000}k - "
                           f"{orientation_info['heading_str']} ({orientation_info['relative_str']})")
                 else:
-                    # Stop motors when ball is not detected
+                    # Stop motors when ball not detected
                     self.motor_controller.stop_motors()
                     
                     # Get orientation information even when ball not found
@@ -154,6 +154,7 @@ class SoccerRobot:
             'position': self.camera.get_ball_position(),
             'proximity': self.camera.get_ball_proximity_info()
         }
+    
 
 
 def main():

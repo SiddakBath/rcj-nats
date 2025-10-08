@@ -253,6 +253,14 @@
                 <span class="status-value" id="ballStatus">Unknown</span>
             </div>
             <div class="status-item">
+                <span class="status-label">Blue Goal:</span>
+                <span class="status-value" id="blueGoalStatus">Unknown</span>
+            </div>
+            <div class="status-item">
+                <span class="status-label">Yellow Goal:</span>
+                <span class="status-value" id="yellowGoalStatus">Unknown</span>
+            </div>
+            <div class="status-item">
                 <span class="status-label">Robot Status:</span>
                 <span class="status-value" id="robotStatus">Unknown</span>
             </div>
@@ -369,6 +377,8 @@
                 .then(data => {
                     updateStatus('online', 'Camera Status');
                     updateStatus(data.ball_detection.detected ? 'Active' : 'Inactive', 'Ball Detection');
+                    updateStatus(data.goal_detection.blue_goal.detected ? 'Detected' : 'Not Detected', 'Blue Goal');
+                    updateStatus(data.goal_detection.yellow_goal.detected ? 'Detected' : 'Not Detected', 'Yellow Goal');
                     updateStatus('Connected', 'Connection Status');
                 })
                 .catch(error => {
@@ -426,3 +436,5 @@
     </script>
 </body>
 </html>
+
+

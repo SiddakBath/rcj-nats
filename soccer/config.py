@@ -25,6 +25,34 @@ BALL_DETECTION = {
     "angle_tolerance": 0.3,  # Ball must be within 30% of frame center horizontally
 }
 
+# Goal Detection Configuration
+GOAL_DETECTION = {
+    # Blue goal (target goal) HSV color range
+    "blue_goal": {
+        "lower": [100, 50, 50],   # Lower HSV for blue
+        "upper": [130, 255, 255], # Upper HSV for blue
+        "min_contour_area": 100,
+        "max_contour_area": 50000,
+        "aspect_ratio_min": 0.3,  # Minimum aspect ratio for goal detection
+        "aspect_ratio_max": 3.0, # Maximum aspect ratio for goal detection
+    },
+    
+    # Yellow goal (opponent goal) HSV color range
+    "yellow_goal": {
+        "lower": [20, 100, 100],  # Lower HSV for yellow
+        "upper": [30, 255, 255],  # Upper HSV for yellow
+        "min_contour_area": 100,
+        "max_contour_area": 50000,
+        "aspect_ratio_min": 0.3,  # Minimum aspect ratio for goal detection
+        "aspect_ratio_max": 3.0, # Maximum aspect ratio for goal detection
+    },
+    
+    # Goal detection parameters
+    "min_goal_width": 50,      # Minimum goal width in pixels
+    "min_goal_height": 30,     # Minimum goal height in pixels
+    "goal_center_tolerance": 0.4,  # Goal must be within 40% of frame center horizontally
+}
+
 # Circular Mask Configuration
 CIRCULAR_MASK = {
     "center_x": 320,  # Center of 640x480 frame
@@ -38,7 +66,7 @@ MOTOR_CONFIG = {
     "addresses": [27, 28, 30, 26],
     
     # Speed parameters
-    "max_speed": 15000000,  # Maximum speed for all movements
+    "max_speed": 35000000,  # Maximum speed for all movements
     "forward_speed": 0.9,  # Forward movement speed (70% of max)
     "turn_sensitivity": 1.2,  # Turn sensitivity for motor control
     
