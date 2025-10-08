@@ -216,6 +216,181 @@
             border: 1px solid #c3e6cb;
             display: none;
         }
+
+        /* Color Tuning Panel Styles */
+        .color-tuning-panel {
+            background: #f8f9fa;
+            border-radius: 15px;
+            padding: 20px;
+            margin-top: 20px;
+            border-left: 4px solid #667eea;
+            display: none;
+        }
+
+        .color-tuning-panel.show {
+            display: block;
+        }
+
+        .color-section {
+            margin-bottom: 25px;
+            padding: 15px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+
+        .color-section h4 {
+            margin-bottom: 15px;
+            color: #495057;
+            font-size: 1.1rem;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .color-preview {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            border: 2px solid #ddd;
+            display: inline-block;
+            margin-right: 10px;
+        }
+
+        .slider-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 15px;
+        }
+
+        .slider-container {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+
+        .slider-label {
+            font-weight: 600;
+            color: #495057;
+            font-size: 0.9rem;
+        }
+
+        .slider-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .slider {
+            flex: 1;
+            height: 6px;
+            border-radius: 3px;
+            background: #ddd;
+            outline: none;
+            -webkit-appearance: none;
+            appearance: none;
+        }
+
+        .slider::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        }
+
+        .slider::-webkit-slider-thumb:hover {
+            transform: scale(1.1);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+        }
+
+        .slider::-moz-range-thumb {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #667eea;
+            cursor: pointer;
+            border: none;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+        }
+
+        .slider-value {
+            min-width: 40px;
+            text-align: center;
+            font-weight: 600;
+            color: #667eea;
+            background: #f8f9fa;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+        }
+
+        .preset-buttons {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+            flex-wrap: wrap;
+        }
+
+        .preset-btn {
+            background: linear-gradient(45deg, #28a745, #20c997);
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 0.9rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .preset-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+        }
+
+        .preset-btn.secondary {
+            background: linear-gradient(45deg, #6c757d, #5a6268);
+        }
+
+        .preset-btn.danger {
+            background: linear-gradient(45deg, #dc3545, #c82333);
+        }
+
+        .toggle-panel-btn {
+            background: linear-gradient(45deg, #667eea, #764ba2);
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 25px;
+            cursor: pointer;
+            font-size: 1rem;
+            font-weight: 600;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            margin-top: 20px;
+        }
+
+        .toggle-panel-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+        }
+
+        @media (max-width: 768px) {
+            .slider-group {
+                grid-template-columns: 1fr;
+            }
+            
+            .preset-buttons {
+                justify-content: center;
+            }
+        }
     </style>
 </head>
 <body>
@@ -237,6 +412,140 @@
             <button class="btn" onclick="refreshStream()">🔄 Refresh Stream</button>
             <button class="btn" onclick="toggleFullscreen()">⛶ Fullscreen</button>
             <button class="btn danger" onclick="stopRobot()">⏹️ Stop Robot</button>
+        </div>
+
+        <button class="toggle-panel-btn" onclick="toggleColorTuning()">
+            🎨 Tune Goal Colors
+        </button>
+
+        <div class="color-tuning-panel" id="colorTuningPanel">
+            <h3 style="margin-bottom: 20px; color: #495057; text-align: center;">🎯 Goal Color Tuning</h3>
+            
+            <!-- Blue Goal Section -->
+            <div class="color-section">
+                <h4>
+                    <div class="color-preview" id="bluePreview" style="background: rgb(0, 100, 255);"></div>
+                    Blue Goal (Target)
+                </h4>
+                
+                <div class="slider-group">
+                    <div class="slider-container">
+                        <label class="slider-label">Lower H (Hue)</label>
+                        <div class="slider-wrapper">
+                            <input type="range" class="slider" id="blueLowerH" min="0" max="179" value="89" oninput="updateBlueGoal()">
+                            <span class="slider-value" id="blueLowerHValue">89</span>
+                        </div>
+                    </div>
+                    <div class="slider-container">
+                        <label class="slider-label">Upper H (Hue)</label>
+                        <div class="slider-wrapper">
+                            <input type="range" class="slider" id="blueUpperH" min="0" max="179" value="145" oninput="updateBlueGoal()">
+                            <span class="slider-value" id="blueUpperHValue">145</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="slider-group">
+                    <div class="slider-container">
+                        <label class="slider-label">Lower S (Saturation)</label>
+                        <div class="slider-wrapper">
+                            <input type="range" class="slider" id="blueLowerS" min="0" max="255" value="75" oninput="updateBlueGoal()">
+                            <span class="slider-value" id="blueLowerSValue">75</span>
+                        </div>
+                    </div>
+                    <div class="slider-container">
+                        <label class="slider-label">Upper S (Saturation)</label>
+                        <div class="slider-wrapper">
+                            <input type="range" class="slider" id="blueUpperS" min="0" max="255" value="255" oninput="updateBlueGoal()">
+                            <span class="slider-value" id="blueUpperSValue">255</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="slider-group">
+                    <div class="slider-container">
+                        <label class="slider-label">Lower V (Value)</label>
+                        <div class="slider-wrapper">
+                            <input type="range" class="slider" id="blueLowerV" min="0" max="255" value="78" oninput="updateBlueGoal()">
+                            <span class="slider-value" id="blueLowerVValue">78</span>
+                        </div>
+                    </div>
+                    <div class="slider-container">
+                        <label class="slider-label">Upper V (Value)</label>
+                        <div class="slider-wrapper">
+                            <input type="range" class="slider" id="blueUpperV" min="0" max="255" value="255" oninput="updateBlueGoal()">
+                            <span class="slider-value" id="blueUpperVValue">255</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Yellow Goal Section -->
+            <div class="color-section">
+                <h4>
+                    <div class="color-preview" id="yellowPreview" style="background: rgb(255, 255, 0);"></div>
+                    Yellow Goal (Opponent)
+                </h4>
+                
+                <div class="slider-group">
+                    <div class="slider-container">
+                        <label class="slider-label">Lower H (Hue)</label>
+                        <div class="slider-wrapper">
+                            <input type="range" class="slider" id="yellowLowerH" min="0" max="179" value="18" oninput="updateYellowGoal()">
+                            <span class="slider-value" id="yellowLowerHValue">18</span>
+                        </div>
+                    </div>
+                    <div class="slider-container">
+                        <label class="slider-label">Upper H (Hue)</label>
+                        <div class="slider-wrapper">
+                            <input type="range" class="slider" id="yellowUpperH" min="0" max="179" value="65" oninput="updateYellowGoal()">
+                            <span class="slider-value" id="yellowUpperHValue">65</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="slider-group">
+                    <div class="slider-container">
+                        <label class="slider-label">Lower S (Saturation)</label>
+                        <div class="slider-wrapper">
+                            <input type="range" class="slider" id="yellowLowerS" min="0" max="255" value="179" oninput="updateYellowGoal()">
+                            <span class="slider-value" id="yellowLowerSValue">179</span>
+                        </div>
+                    </div>
+                    <div class="slider-container">
+                        <label class="slider-label">Upper S (Saturation)</label>
+                        <div class="slider-wrapper">
+                            <input type="range" class="slider" id="yellowUpperS" min="0" max="255" value="255" oninput="updateYellowGoal()">
+                            <span class="slider-value" id="yellowUpperSValue">255</span>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="slider-group">
+                    <div class="slider-container">
+                        <label class="slider-label">Lower V (Value)</label>
+                        <div class="slider-wrapper">
+                            <input type="range" class="slider" id="yellowLowerV" min="0" max="255" value="179" oninput="updateYellowGoal()">
+                            <span class="slider-value" id="yellowLowerVValue">179</span>
+                        </div>
+                    </div>
+                    <div class="slider-container">
+                        <label class="slider-label">Upper V (Value)</label>
+                        <div class="slider-wrapper">
+                            <input type="range" class="slider" id="yellowUpperV" min="0" max="255" value="255" oninput="updateYellowGoal()">
+                            <span class="slider-value" id="yellowUpperVValue">255</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Preset Buttons -->
+            <div class="preset-buttons">
+                <button class="preset-btn" onclick="loadDefaultColors()">🔄 Reset to Default</button>
+                <button class="preset-btn secondary" onclick="saveCurrentColors()">💾 Save Current</button>
+                <button class="preset-btn secondary" onclick="loadSavedColors()">📁 Load Saved</button>
+                <button class="preset-btn danger" onclick="resetAllColors()">🗑️ Reset All</button>
+            </div>
         </div>
 
         <div class="error-message" id="errorMessage"></div>
@@ -433,6 +742,256 @@
                 }
             }
         });
+
+        // Color Tuning Functions
+        let colorTuningVisible = false;
+        let currentColors = {
+            blue: { lower: [100, 50, 50], upper: [130, 255, 255] },
+            yellow: { lower: [20, 100, 100], upper: [30, 255, 255] }
+        };
+
+        function toggleColorTuning() {
+            const panel = document.getElementById('colorTuningPanel');
+            const button = document.querySelector('.toggle-panel-btn');
+            
+            colorTuningVisible = !colorTuningVisible;
+            
+            if (colorTuningVisible) {
+                panel.classList.add('show');
+                button.textContent = '🎨 Hide Color Tuning';
+                loadCurrentColors();
+            } else {
+                panel.classList.remove('show');
+                button.textContent = '🎨 Tune Goal Colors';
+            }
+        }
+
+        function loadCurrentColors() {
+            fetch('/api/get_goal_colors')
+                .then(response => response.json())
+                .then(data => {
+                    // Update blue goal sliders
+                    document.getElementById('blueLowerH').value = data.blue_goal_lower[0];
+                    document.getElementById('blueLowerS').value = data.blue_goal_lower[1];
+                    document.getElementById('blueLowerV').value = data.blue_goal_lower[2];
+                    document.getElementById('blueUpperH').value = data.blue_goal_upper[0];
+                    document.getElementById('blueUpperS').value = data.blue_goal_upper[1];
+                    document.getElementById('blueUpperV').value = data.blue_goal_upper[2];
+                    
+                    // Update yellow goal sliders
+                    document.getElementById('yellowLowerH').value = data.yellow_goal_lower[0];
+                    document.getElementById('yellowLowerS').value = data.yellow_goal_lower[1];
+                    document.getElementById('yellowLowerV').value = data.yellow_goal_lower[2];
+                    document.getElementById('yellowUpperH').value = data.yellow_goal_upper[0];
+                    document.getElementById('yellowUpperS').value = data.yellow_goal_upper[1];
+                    document.getElementById('yellowUpperV').value = data.yellow_goal_upper[2];
+                    
+                    // Update display values
+                    updateBlueGoal();
+                    updateYellowGoal();
+                })
+                .catch(error => {
+                    console.error('Error loading current colors:', error);
+                    showMessage('Failed to load current color settings', 'error');
+                });
+        }
+
+        function updateBlueGoal() {
+            const lowerH = parseInt(document.getElementById('blueLowerH').value);
+            const lowerS = parseInt(document.getElementById('blueLowerS').value);
+            const lowerV = parseInt(document.getElementById('blueLowerV').value);
+            const upperH = parseInt(document.getElementById('blueUpperH').value);
+            const upperS = parseInt(document.getElementById('blueUpperS').value);
+            const upperV = parseInt(document.getElementById('blueUpperV').value);
+            
+            // Update display values
+            document.getElementById('blueLowerHValue').textContent = lowerH;
+            document.getElementById('blueLowerSValue').textContent = lowerS;
+            document.getElementById('blueLowerVValue').textContent = lowerV;
+            document.getElementById('blueUpperHValue').textContent = upperH;
+            document.getElementById('blueUpperSValue').textContent = upperS;
+            document.getElementById('blueUpperVValue').textContent = upperV;
+            
+            // Update color preview using lower values
+            const preview = document.getElementById('bluePreview');
+            const rgb = hsvToRgb(lowerH, lowerS, lowerV);
+            preview.style.background = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+            
+            // Send update to server
+            sendColorUpdate('blue', [lowerH, lowerS, lowerV], [upperH, upperS, upperV]);
+        }
+
+        function updateYellowGoal() {
+            const lowerH = parseInt(document.getElementById('yellowLowerH').value);
+            const lowerS = parseInt(document.getElementById('yellowLowerS').value);
+            const lowerV = parseInt(document.getElementById('yellowLowerV').value);
+            const upperH = parseInt(document.getElementById('yellowUpperH').value);
+            const upperS = parseInt(document.getElementById('yellowUpperS').value);
+            const upperV = parseInt(document.getElementById('yellowUpperV').value);
+            
+            // Update display values
+            document.getElementById('yellowLowerHValue').textContent = lowerH;
+            document.getElementById('yellowLowerSValue').textContent = lowerS;
+            document.getElementById('yellowLowerVValue').textContent = lowerV;
+            document.getElementById('yellowUpperHValue').textContent = upperH;
+            document.getElementById('yellowUpperSValue').textContent = upperS;
+            document.getElementById('yellowUpperVValue').textContent = upperV;
+            
+            // Update color preview using lower values
+            const preview = document.getElementById('yellowPreview');
+            const rgb = hsvToRgb(lowerH, lowerS, lowerV);
+            preview.style.background = `rgb(${rgb.r}, ${rgb.g}, ${rgb.b})`;
+            
+            // Send update to server
+            sendColorUpdate('yellow', [lowerH, lowerS, lowerV], [upperH, upperS, upperV]);
+        }
+
+        function sendColorUpdate(goalType, lower, upper) {
+            const data = {};
+            if (goalType === 'blue') {
+                data.blue_goal_lower = lower;
+                data.blue_goal_upper = upper;
+            } else {
+                data.yellow_goal_lower = lower;
+                data.yellow_goal_upper = upper;
+            }
+            
+            fetch('/api/update_goal_colors', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify(data)
+            })
+            .then(response => response.json())
+            .then(result => {
+                if (result.status === 'success') {
+                    console.log(`${goalType} goal colors updated successfully`);
+                } else {
+                    showMessage(`Failed to update ${goalType} goal colors: ${result.message}`, 'error');
+                }
+            })
+            .catch(error => {
+                console.error('Error updating colors:', error);
+                showMessage(`Error updating ${goalType} goal colors`, 'error');
+            });
+        }
+
+        function hsvToRgb(h, s, v) {
+            h = h / 179; // Normalize to 0-1
+            s = s / 255; // Normalize to 0-1
+            v = v / 255; // Normalize to 0-1
+            
+            let r, g, b;
+            const i = Math.floor(h * 6);
+            const f = h * 6 - i;
+            const p = v * (1 - s);
+            const q = v * (1 - f * s);
+            const t = v * (1 - (1 - f) * s);
+            
+            switch (i % 6) {
+                case 0: r = v, g = t, b = p; break;
+                case 1: r = q, g = v, b = p; break;
+                case 2: r = p, g = v, b = t; break;
+                case 3: r = p, g = q, b = v; break;
+                case 4: r = t, g = p, b = v; break;
+                case 5: r = v, g = p, b = q; break;
+            }
+            
+            return {
+                r: Math.round(r * 255),
+                g: Math.round(g * 255),
+                b: Math.round(b * 255)
+            };
+        }
+
+        function loadDefaultColors() {
+            // Reset to default values from config.py
+            document.getElementById('blueLowerH').value = 89;
+            document.getElementById('blueLowerS').value = 75;
+            document.getElementById('blueLowerV').value = 78;
+            document.getElementById('blueUpperH').value = 145;
+            document.getElementById('blueUpperS').value = 255;
+            document.getElementById('blueUpperV').value = 255;
+            
+            document.getElementById('yellowLowerH').value = 18;
+            document.getElementById('yellowLowerS').value = 179;
+            document.getElementById('yellowLowerV').value = 179;
+            document.getElementById('yellowUpperH').value = 65;
+            document.getElementById('yellowUpperS').value = 255;
+            document.getElementById('yellowUpperV').value = 255;
+            
+            updateBlueGoal();
+            updateYellowGoal();
+            showMessage('Reset to default colors', 'success');
+        }
+
+        function saveCurrentColors() {
+            const colors = {
+                blue: {
+                    lower: [
+                        parseInt(document.getElementById('blueLowerH').value),
+                        parseInt(document.getElementById('blueLowerS').value),
+                        parseInt(document.getElementById('blueLowerV').value)
+                    ],
+                    upper: [
+                        parseInt(document.getElementById('blueUpperH').value),
+                        parseInt(document.getElementById('blueUpperS').value),
+                        parseInt(document.getElementById('blueUpperV').value)
+                    ]
+                },
+                yellow: {
+                    lower: [
+                        parseInt(document.getElementById('yellowLowerH').value),
+                        parseInt(document.getElementById('yellowLowerS').value),
+                        parseInt(document.getElementById('yellowLowerV').value)
+                    ],
+                    upper: [
+                        parseInt(document.getElementById('yellowUpperH').value),
+                        parseInt(document.getElementById('yellowUpperS').value),
+                        parseInt(document.getElementById('yellowUpperV').value)
+                    ]
+                }
+            };
+            
+            localStorage.setItem('savedGoalColors', JSON.stringify(colors));
+            showMessage('Color settings saved locally', 'success');
+        }
+
+        function loadSavedColors() {
+            const saved = localStorage.getItem('savedGoalColors');
+            if (saved) {
+                const colors = JSON.parse(saved);
+                
+                // Load blue goal colors
+                document.getElementById('blueLowerH').value = colors.blue.lower[0];
+                document.getElementById('blueLowerS').value = colors.blue.lower[1];
+                document.getElementById('blueLowerV').value = colors.blue.lower[2];
+                document.getElementById('blueUpperH').value = colors.blue.upper[0];
+                document.getElementById('blueUpperS').value = colors.blue.upper[1];
+                document.getElementById('blueUpperV').value = colors.blue.upper[2];
+                
+                // Load yellow goal colors
+                document.getElementById('yellowLowerH').value = colors.yellow.lower[0];
+                document.getElementById('yellowLowerS').value = colors.yellow.lower[1];
+                document.getElementById('yellowLowerV').value = colors.yellow.lower[2];
+                document.getElementById('yellowUpperH').value = colors.yellow.upper[0];
+                document.getElementById('yellowUpperS').value = colors.yellow.upper[1];
+                document.getElementById('yellowUpperV').value = colors.yellow.upper[2];
+                
+                updateBlueGoal();
+                updateYellowGoal();
+                showMessage('Saved color settings loaded', 'success');
+            } else {
+                showMessage('No saved color settings found', 'error');
+            }
+        }
+
+        function resetAllColors() {
+            if (confirm('Are you sure you want to reset all colors to default? This cannot be undone.')) {
+                loadDefaultColors();
+            }
+        }
     </script>
 </body>
 </html>

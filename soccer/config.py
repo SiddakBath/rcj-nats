@@ -29,8 +29,8 @@ BALL_DETECTION = {
 GOAL_DETECTION = {
     # Blue goal (target goal) HSV color range
     "blue_goal": {
-        "lower": [100, 50, 50],   # Lower HSV for blue
-        "upper": [130, 255, 255], # Upper HSV for blue
+        "lower": [89, 75, 78],   # Lower HSV for blue
+        "upper": [145, 255, 255], # Upper HSV for blue
         "min_contour_area": 100,
         "max_contour_area": 50000,
         "aspect_ratio_min": 0.3,  # Minimum aspect ratio for goal detection
@@ -39,8 +39,8 @@ GOAL_DETECTION = {
     
     # Yellow goal (opponent goal) HSV color range
     "yellow_goal": {
-        "lower": [20, 100, 100],  # Lower HSV for yellow
-        "upper": [30, 255, 255],  # Upper HSV for yellow
+        "lower": [18, 179, 179],  # Lower HSV for yellow
+        "upper": [65, 255, 255],  # Upper HSV for yellow
         "min_contour_area": 100,
         "max_contour_area": 50000,
         "aspect_ratio_min": 0.3,  # Minimum aspect ratio for goal detection

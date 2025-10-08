@@ -23,19 +23,19 @@ class CameraWebServer:
         self.upper_orange = np.array([14, 255, 255])
         
         # Goal detection parameters
-        # Blue goal (target goal)
-        self.blue_goal_lower = np.array([100, 50, 50])
-        self.blue_goal_upper = np.array([130, 255, 255])
+        # Blue goal (target goal) - using config.py values
+        self.blue_goal_lower = np.array([89, 75, 78])
+        self.blue_goal_upper = np.array([145, 255, 255])
         
-        # Yellow goal (opponent goal)
-        self.yellow_goal_lower = np.array([20, 100, 100])
-        self.yellow_goal_upper = np.array([30, 255, 255])
+        # Yellow goal (opponent goal) - using config.py values
+        self.yellow_goal_lower = np.array([18, 179, 179])
+        self.yellow_goal_upper = np.array([65, 255, 255])
         
-        # Goal detection thresholds
-        self.min_goal_area = 100
+        # Goal detection thresholds (adjusted for smaller goals)
+        self.min_goal_area = 50  # Reduced from 100
         self.max_goal_area = 50000
-        self.min_goal_width = 50
-        self.min_goal_height = 30
+        self.min_goal_width = 25  # Reduced from 50
+        self.min_goal_height = 15  # Reduced from 30
         
         # Circular mask parameters to ignore center area
         self.mask_center_x = 320  # Center of 640x480 frame
@@ -113,8 +113,8 @@ class CameraWebServer:
         # Ball detection using HSV frame
         mask = cv2.inRange(hsv_frame, self.lower_orange, self.upper_orange)
         
-        # Apply circular mask to ignore center area
-        mask = self._apply_circular_mask(mask)
+        # Apply circular mask to ignore center area (temporarily disabled)
+        # mask = self._apply_circular_mask(mask)
         
         contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
         
@@ -227,8 +227,8 @@ class CameraWebServer:
         # Create HSV mask for the goal color
         mask = cv2.inRange(hsv_frame, lower_color, upper_color)
         
-        # Apply circular mask to ignore center area
-        mask = self._apply_circular_mask(mask)
+        # Apply circular mask to ignore center area (temporarily disabled)
+        # mask = self._apply_circular_mask(mask)
         
         # Find contours
         contours, _ = cv2.findContours(mask, cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
@@ -370,6 +370,38 @@ class CameraWebServer:
                 return jsonify({'status': 'success', 'message': 'Detection parameters updated'})
             except Exception as e:
                 return jsonify({'status': 'error', 'message': str(e)}), 400
+        
+        @self.app.route('/api/update_goal_colors', methods=['POST'])
+        def api_update_goal_colors():
+            """API endpoint to update goal color detection parameters"""
+            try:
+                data = request.get_json()
+                
+                # Update blue goal colors
+                if 'blue_goal_lower' in data:
+                    self.blue_goal_lower = np.array(data['blue_goal_lower'])
+                if 'blue_goal_upper' in data:
+                    self.blue_goal_upper = np.array(data['blue_goal_upper'])
+                
+                # Update yellow goal colors
+                if 'yellow_goal_lower' in data:
+                    self.yellow_goal_lower = np.array(data['yellow_goal_lower'])
+                if 'yellow_goal_upper' in data:
+                    self.yellow_goal_upper = np.array(data['yellow_goal_upper'])
+                
+                return jsonify({'status': 'success', 'message': 'Goal color parameters updated'})
+            except Exception as e:
+                return jsonify({'status': 'error', 'message': str(e)}), 400
+        
+        @self.app.route('/api/get_goal_colors')
+        def api_get_goal_colors():
+            """API endpoint to get current goal color parameters"""
+            return jsonify({
+                'blue_goal_lower': self.blue_goal_lower.tolist(),
+                'blue_goal_upper': self.blue_goal_upper.tolist(),
+                'yellow_goal_lower': self.yellow_goal_lower.tolist(),
+                'yellow_goal_upper': self.yellow_goal_upper.tolist()
+            })
     
     def _signal_handler(self, signum, frame):
         """Handle shutdown signals gracefully"""
