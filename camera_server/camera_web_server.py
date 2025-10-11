@@ -20,7 +20,7 @@ class CameraWebServer:
         
         # Ball detection parameters
         self.lower_orange = np.array([0, 132, 61])
-        self.upper_orange = np.array([14, 255, 255])
+        self.upper_orange = np.array([20, 255, 255])
         
         # Goal detection parameters
         # Blue goal (target goal) - using config.py values
